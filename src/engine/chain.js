@@ -314,6 +314,7 @@ export function compile(treeRaw, goalRaw, { start: startRaw = {}, goalMode = "al
     stateAt: (k) => st.view(k), // the counters of state k (k ≥ 1), for progress() and isDone()
     memoryBytes: st.data.byteLength + st.table.byteLength, // the stored states (for the cache)
     worst: absorb ? worstCase(csr, startIndex) : null,
+    best: absorb ? bestCase(csr, startIndex) : null,
     reqs, progress, isDone, goalMode,
   };
 }
@@ -439,6 +440,24 @@ export function projectOut(store, csr, x, tol = LUMPING_TOLERANCE) {
 // Exact worst case: the most pulls the goal can possibly take. It exists only when no
 // state can repeat (the graph of unfinished states has no cycle); then it is the longest
 // path from the start to the goal. Returns null when there is no guarantee.
+// Exact best case: the fewest pulls that can reach the goal (shortest path to the sink),
+// null if it can't be reached
+export function bestCase({ N, rowStart, col }, startIndex) {
+  if (startIndex === 0) return 0;
+  const dist = new Int32Array(N).fill(-1);
+  dist[startIndex] = 0;
+  const queue = [startIndex];
+  for (let i = 0; i < queue.length; i++) {
+    const k = queue[i];
+    for (let e = rowStart[k]; e < rowStart[k + 1]; e++) {
+      const j = col[e];
+      if (j === 0) return dist[k] + 1;
+      if (dist[j] < 0) { dist[j] = dist[k] + 1; queue.push(j); }
+    }
+  }
+  return null;
+}
+
 export function worstCase({ N, rowStart, col }, startIndex) {
   if (startIndex === 0) return 0;
   const indeg = new Int32Array(N);

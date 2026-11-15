@@ -1,12 +1,10 @@
-// Shareable links: the setup (banner, pity and memory, pull plan, budget or target, calculation
-// settings) packed into the address after "#s=", so nothing is sent to the server. An unchanged
-// built-in banner is stored by its key only (short links; names in the reader's language); an
-// edited or custom banner is stored in full. Display preferences (theme, decimals, chart lines)
-// are not shared.
-import { DEFAULT_SETTINGS, fmtInt, fmtNum, fmtPct, freshState, fromEngineTree, newId, presets, reqLabel } from "./model.js";
+// Shareable links: the setup (banner, pity and memory, pull plan, budget or target) packed into
+// the address after "#s=", so nothing is sent to the server. An unchanged built-in banner is
+// stored by its key only (short links; names in the reader's language); an edited or custom
+// banner is stored in full. Settings are not shared: they're the reader's own, for every banner.
+import { fmtInt, fmtNum, fmtPct, freshState, fromEngineTree, newId, presets, reqLabel } from "./model.js";
 
 const VERSION = 2; // 1: banner in the editor's own form (still read)
-const CALC_SETTINGS = ["method", "eps", "maxPulls", "maxStates", "noLimits", "pct"];
 
 // Item lists of the built-in banners, so a custom banner reusing one stores "@key/path" instead
 // of every name (the reader's language then names them, as for built-in banners)
@@ -67,8 +65,6 @@ const ROW_DEFAULTS = { type: "total", item: 0, k: 1, copies: 1, from: "" };
 function payloadOf(state) {
   const preset = presets()[state.preset];
   const unchanged = preset && JSON.stringify(state.banner) === JSON.stringify(preset.banner);
-  const settings = {};
-  for (const k of CALC_SETTINGS) if (state.settings?.[k] !== undefined && state.settings[k] !== DEFAULT_SETTINGS[k]) settings[k] = state.settings[k];
   const rows = state.goal.map((row) => {
     const out = {};
     for (const [k, v] of Object.entries(row)) if (k !== "id" && v != null && JSON.stringify(v) !== JSON.stringify(ROW_DEFAULTS[k])) out[k] = v;
@@ -85,7 +81,6 @@ function payloadOf(state) {
     ...(state.goalMode === "any" ? { gm: "any" } : {}),
     ...(Object.keys(start).length ? { s: start } : {}),
     ...(state.mode === "pulls" ? { m: "pulls", d: state.desired } : { bu: state.budget }),
-    ...(Object.keys(settings).length ? { st: settings } : {}),
   };
 }
 
@@ -135,7 +130,7 @@ export async function decodeSetup(code) {
     mode: p.m === "pulls" ? "pulls" : "budget",
     budget: Number.isFinite(p.bu) ? p.bu : base.budget,
     desired: Number.isFinite(p.d) ? p.d : base.desired,
-    settings: { ...base.settings, ...(p.st ?? {}) },
+    // settings are the reader's own (they're shared by every banner), so a link doesn't carry them
   };
 }
 

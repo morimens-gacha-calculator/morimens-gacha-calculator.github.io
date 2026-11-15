@@ -8,7 +8,8 @@ import { downloadChartPng, downloadCsv, fileName } from "../export.js";
 import { useT, errorText } from "../i18n/index.js";
 
 // Side-by-side comparison of saved setups (banner + plan + pity)
-export default function ComparePanel({ items, results, budget, setBudget, rename, remove, load, theme }) {
+export default function ComparePanel({ items, results, budget, setBudget, rename, remove, load, theme, settings }) {
+  const showBest = settings?.showBest !== false, showWorst = settings?.showWorst !== false;
   const T = useT();
   const L = T.compare;
   const rows = items.map((it, i) => {
@@ -68,7 +69,7 @@ export default function ComparePanel({ items, results, budget, setBudget, rename
           {L.pulls}
         </label>
         <HelpButton label={L.helpLabel} text={L.help} />
-        <CompareExport rows={rows} ready={ready} budget={budget} chartRef={chartRef} />
+        <CompareExport rows={rows} ready={ready} budget={budget} chartRef={chartRef} showBest={showBest} showWorst={showWorst} />
       </div>
 
       <div className="chart-container compare-chart">
@@ -101,7 +102,8 @@ export default function ComparePanel({ items, results, budget, setBudget, rename
               <th className="num">{L.average}</th>
               <th className="num">{L.median}</th>
               <th className="num">{L.p90}</th>
-              <th className="num">{L.worst}</th>
+              {showBest && <th className="num">{L.best}</th>}
+              {showWorst && <th className="num">{L.worst}</th>}
               <th className="num">{L.withinN(fmtInt(budget))}</th>
               <th><span className="sr-only">{L.actions}</span></th>
             </tr>
@@ -118,11 +120,12 @@ export default function ComparePanel({ items, results, budget, setBudget, rename
                     <td className={`num ${r.mean === best.mean && ready.length > 1 ? "best" : ""}`}>{fmtNum(r.mean)}</td>
                     <td className={`num ${r.median === best.median && ready.length > 1 ? "best" : ""}`}>{fmtInt(r.median)}</td>
                     <td className={`num ${r.percentiles.p90 === best.p90 && ready.length > 1 ? "best" : ""}`}>{fmtInt(r.percentiles.p90 ?? null)}</td>
-                    <td className="num">{r.max != null ? fmtInt(r.max) : <span className="muted">{L.none}</span>}</td>
+                    {showBest && <td className="num">{r.min != null ? fmtInt(r.min) : <span className="muted">{L.none}</span>}</td>}
+                    {showWorst && <td className="num">{r.max != null ? fmtInt(r.max) : <span className="muted">{L.none}</span>}</td>}
                     <td className={`num ${chance === best.chance && ready.length > 1 ? "best" : ""}`}>{fmtPct(chance)}</td>
                   </>
                 ) : (
-                  <td colSpan={5} className={res?.status === "error" ? "err-text" : "muted"}>{res?.status === "error" ? errorText(T, res) : L.calculating}</td>
+                  <td colSpan={4 + (showBest ? 1 : 0) + (showWorst ? 1 : 0)} className={res?.status === "error" ? "err-text" : "muted"}>{res?.status === "error" ? errorText(T, res) : L.calculating}</td>
                 )}
                 <td className="actions">
                   <button type="button" className="btn btn--small" onClick={() => load(it)}>{L.load}</button>
@@ -138,16 +141,16 @@ export default function ComparePanel({ items, results, budget, setBudget, rename
 }
 
 // "Export ▾" for the comparison: the table and the chance curves as CSV, the chart as PNG
-function CompareExport({ rows, ready, budget, chartRef }) {
+function CompareExport({ rows, ready, budget, chartRef, showBest, showWorst }) {
   const T = useT();
   const L = T.compare;
   const { open, setOpen, ref } = usePopup();
   const run = (fn) => { setOpen(false); fn(); };
   const table = () => [
-    [L.setup, L.average, L.median, L.p90, L.worst, L.withinN(budget)],
+    [L.setup, L.average, L.median, L.p90, ...(showBest ? [L.best] : []), ...(showWorst ? [L.worst] : []), L.withinN(budget)],
     ...rows.map(({ it, r, chance }) => (r
-      ? [it.name, r.mean, r.median ?? "", r.percentiles.p90 ?? "", r.max ?? "", chance]
-      : [it.name, "", "", "", "", ""])),
+      ? [it.name, r.mean, r.median ?? "", r.percentiles.p90 ?? "", ...(showBest ? [r.min ?? ""] : []), ...(showWorst ? [r.max ?? ""] : []), chance]
+      : [it.name])),
   ];
   const byPull = () => {
     const last = Math.max(budget || 0, ...ready.map(({ r }) => r.cdf.length - 1));

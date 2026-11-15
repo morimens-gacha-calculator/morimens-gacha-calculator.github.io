@@ -78,6 +78,7 @@ export default {
   nav: { label: "Banner presets" },
 
   setup: {
+    tabSettingsTitle: "Settings for every banner and comparison",
     tabs: "Setup",
     tabPity: "Pity",
     tabBanner: "Banner rules",
@@ -163,6 +164,11 @@ export default {
   },
 
   settings: {
+    globalNote: "These settings are shared by every banner and comparison: switching banners, Reset and shared links don't change them.",
+    showBest: "Show earliest possible pull",
+    showBestHint: "The fewest pulls the goal could ever take, if everything goes your way.",
+    showWorst: "Show guaranteed by (worst case)",
+    showWorstHint: "The most pulls the goal can take, when the banner's guarantees make it certain.",
     groupDisplay: "Display",
     groupCalc: "Calculation",
     percentilesHint: "Comma-separated, for the Pulls needed table and chart lines.",
@@ -170,7 +176,7 @@ export default {
     decimalsHint: "For chances and averages. Pull counts are always whole numbers.",
     percentiles: "Percentiles to show",
     eps: "Ignore the tail below",
-    epsHint: "The worst case is calculated exactly either way; this only limits how far the curves go.",
+    epsHint: "The earliest pull and the worst case are calculated exactly either way; this only limits how far the curves go.",
     noLimits: "No limits",
     noLimitsHint: "Ignore max pulls and max states. Very large calculations can then take minutes or run the browser tab out of memory; Cancel always works.",
     on: "On",
@@ -220,6 +226,7 @@ export default {
   },
 
   target: {
+    notPossible: (n) => `Not possible in fewer than ${n} pulls.`,
     label: "Question",
     modes: "Calculator mode",
     budgetMode: "Chance from budget",
@@ -249,6 +256,8 @@ export default {
   },
 
   chart: {
+    best: (n) => `earliest ${n}`,
+    lineBest: "Earliest possible pull",
     export: "Export",
     exportByPull: "Chance by pull (CSV)",
     exportBudget: (n) => `Progress after ${n} pulls (CSV)`,
@@ -317,6 +326,7 @@ export default {
   },
 
   pct: {
+    earliest: "Earliest possible",
     title: "Pulls needed",
     chanceCol: "To have this chance",
     needCol: "You need",
@@ -329,6 +339,7 @@ export default {
   },
 
   compare: {
+    best: "Best case",
     exportTable: "Comparison table (CSV)",
     exportByPull: "Chance by pull, every setup (CSV)",
     fileTable: "comparison",

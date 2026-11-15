@@ -116,9 +116,9 @@ export function customTemplate() {
 }
 
 // Which reference lines the chart draws (the "Lines" menu)
-export const DEFAULT_LINES = { target: true, mean: true, pcts: [50, 90], worst: true, custom: [] };
+export const DEFAULT_LINES = { target: true, mean: true, pcts: [50, 90], best: true, worst: true, custom: [] };
 
-export const DEFAULT_SETTINGS = { pct: "10, 25, 50, 75, 90, 95, 99", eps: String(DEFAULT_EPS), maxPulls: DEFAULT_MAX_PULLS, maxStates: DEFAULT_MAX_STATES, method: "auto", decimals: 2, noLimits: false };
+export const DEFAULT_SETTINGS = { pct: "10, 25, 50, 75, 90, 95, 99", eps: String(DEFAULT_EPS), maxPulls: DEFAULT_MAX_PULLS, maxStates: DEFAULT_MAX_STATES, method: "auto", decimals: 2, noLimits: false, showBest: true, showWorst: true };
 
 export function freshState(key) {
   const p = key === "custom" ? customTemplate() : presets()[key];

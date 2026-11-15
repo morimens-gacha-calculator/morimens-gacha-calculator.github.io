@@ -53,6 +53,9 @@ export default function TargetSection({ state, update, engine }) {
           </output>
         </div>
       </div>
+      {r && budgetMode && r.min != null && (state.budget ?? 0) < r.min && engine.status !== "busy" && (
+        <p className="note-box" role="status">{L.notPossible(fmtInt(r.min))}</p>
+      )}
       {engine.status === "error" && <p className="error-box" role="alert">{errorText(T, engine)}</p>}
       {engine.status === "cancelled" && <p className="note-box" role="status">{T.progress.cancelled}</p>}
     </section>

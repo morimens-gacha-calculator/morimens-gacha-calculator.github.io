@@ -1,13 +1,15 @@
 import { useT } from "../i18n/index.js";
 import { fmtInt, fmtNum } from "../model.js";
 
-export default function PercentileTable({ engine }) {
+export default function PercentileTable({ engine, settings }) {
   const L = useT().pct;
   const r = engine.result;
   if (!r) return null;
-  const rows = Object.entries(r.percentiles).map(([k, v]) => [L.row(k.slice(1)), fmtInt(v)]);
+  const rows = [];
+  if (r.min != null && settings?.showBest !== false) rows.push([L.earliest, fmtInt(r.min)]);
+  rows.push(...Object.entries(r.percentiles).map(([k, v]) => [L.row(k.slice(1)), fmtInt(v)]));
   rows.push([L.average, fmtNum(r.mean)]);
-  if (r.max != null) rows.push([L.guaranteed, fmtInt(r.max)]);
+  if (r.max != null && settings?.showWorst !== false) rows.push([L.guaranteed, fmtInt(r.max)]);
   const ms = engine.ms ?? r.ms;
   const time = ms >= 1000 ? L.timeS(fmtNum(ms / 1000, 1)) : L.timeMs(fmtInt(Math.max(1, Math.round(ms))));
   return (

@@ -5,13 +5,14 @@ import { HelpButton } from "./Help.jsx";
 import BannerEditor from "./BannerEditor.jsx";
 import { allAlts, allNodes, num, DEFAULT_SETTINGS } from "../model.js";
 
-export default function SetupCard({ state, update, setState, tabRequest }) {
+export default function SetupCard({ state, update, setState, setSettings, tabRequest }) {
   const T = useT();
   const S = T.setup;
+  // Pity and Banner rules belong to this banner; Settings (set apart on the right) to every banner
   const TABS = [
     { id: "pity", label: S.tabPity, help: S.helpPity },
     { id: "banner", label: S.tabBanner, help: S.helpBanner },
-    { id: "settings", label: S.tabSettings, help: S.helpSettings },
+    { id: "settings", label: S.tabSettings, help: S.helpSettings, global: true },
   ];
   const [tab, setTab] = useState("pity");
   useEffect(() => { if (tabRequest) setTab(tabRequest.tab); }, [tabRequest]);
@@ -40,7 +41,8 @@ export default function SetupCard({ state, update, setState, tabRequest }) {
     try {
       const s = JSON.parse(await f.text());
       if (!s.banner || !Array.isArray(s.goal)) throw new Error(S.notAnExport);
-      setState({ ...s, settings: { ...DEFAULT_SETTINGS, ...s.settings }, preset: "custom" });
+      setState({ ...s, preset: "custom" });
+      if (s.settings) setSettings({ ...DEFAULT_SETTINGS, ...s.settings });
       setMsg(S.loaded(f.name));
     } catch (err) { setMsg(S.loadFailed(err.message)); }
   };
@@ -50,14 +52,17 @@ export default function SetupCard({ state, update, setState, tabRequest }) {
       <div className="tab-nav" role="tablist" aria-label={S.tabs}>
         {TABS.map((t) => (
           <button key={t.id} type="button" role="tab" id={`tab-${t.id}`} aria-selected={tab === t.id} aria-controls={`panel-${t.id}`}
-            className={`tab-link ${tab === t.id ? "active" : ""}`} onClick={() => setTab(t.id)}>{t.label}</button>
+            className={`tab-link ${t.global ? "tab-link--global" : ""} ${tab === t.id ? "active" : ""}`} onClick={() => setTab(t.id)}
+            title={t.global ? S.tabSettingsTitle : undefined}>
+            {t.global && <span className="tab-gear" aria-hidden="true">⚙</span>}{t.label}
+          </button>
         ))}
         <HelpButton label={current.label} text={current.help} />
       </div>
       <div className={`tab-content is-${tab}`} role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
         {tab === "pity" && <PityPanel state={state} update={update} />}
         {tab === "banner" && <BannerEditor state={state} update={update} />}
-        {tab === "settings" && <SettingsPanel state={state} update={update} />}
+        {tab === "settings" && <SettingsPanel settings={state.settings} setSettings={setSettings} />}
       </div>
       <div className="data-buttons">
         <button type="button" className="btn btn--soft" onClick={() => fileRef.current?.click()}>{S.importData}</button>
@@ -147,18 +152,30 @@ function SettingRow({ label, hint, wide, children }) {
   );
 }
 
-function SettingsPanel({ state, update }) {
+function SettingsPanel({ settings: s, setSettings }) {
   const L = useT().settings;
-  const s = state.settings;
-  const set = (f, v) => update((st) => ({ ...st, settings: { ...st.settings, [f]: v } }));
+  const set = (f, v) => setSettings((cur) => ({ ...cur, [f]: v }));
   return (
     <div className="settings-list">
+      <p className="settings-global-note">{L.globalNote}</p>
       <div className="settings-group">{L.groupDisplay}</div>
       <SettingRow label={L.decimals} hint={L.decimalsHint}>
         <NumberInput className="custom-input" min={0} max={6} fallback={2} value={s.decimals ?? 2} onChange={(v) => set("decimals", v)} />
       </SettingRow>
       <SettingRow label={L.percentiles} hint={L.percentilesHint} wide>
         <input type="text" className="custom-input" value={s.pct} onChange={(e) => set("pct", e.target.value)} />
+      </SettingRow>
+      <SettingRow label={L.showBest} hint={L.showBestHint}>
+        <span className="switch-row">
+          <input type="checkbox" className="switch" checked={s.showBest !== false} onChange={(e) => set("showBest", e.target.checked)} />
+          <span>{s.showBest !== false ? L.on : L.off}</span>
+        </span>
+      </SettingRow>
+      <SettingRow label={L.showWorst} hint={L.showWorstHint}>
+        <span className="switch-row">
+          <input type="checkbox" className="switch" checked={s.showWorst !== false} onChange={(e) => set("showWorst", e.target.checked)} />
+          <span>{s.showWorst !== false ? L.on : L.off}</span>
+        </span>
       </SettingRow>
       <div className="settings-group">{L.groupCalc}</div>
       <SettingRow label={L.eps} hint={L.epsHint}>

@@ -1,7 +1,7 @@
 import { fmtInt, fmtNum } from "../model.js";
 import { useT } from "../i18n/index.js";
 
-export default function StatsRow({ engine }) {
+export default function StatsRow({ engine, settings }) {
   const L = useT().stats;
   const r = engine.result;
   if (!r) return null;
@@ -9,7 +9,7 @@ export default function StatsRow({ engine }) {
     [L.average, fmtNum(r.mean), L.averageSub(fmtNum(r.sd))],
     [L.median, fmtInt(r.median), L.medianSub],
     [L.p90, fmtInt(r.percentiles.p90 ?? null), L.pulls],
-    r.max != null ? [L.guaranteed, fmtInt(r.max), L.guaranteedSub] : [L.p99, fmtInt(r.percentiles.p99 ?? null), r.maxKnown === false ? L.guaranteeUnknown : L.noGuarantee],
+    r.max != null && settings?.showWorst !== false ? [L.guaranteed, fmtInt(r.max), L.guaranteedSub] : [L.p99, fmtInt(r.percentiles.p99 ?? null), settings?.showWorst === false ? L.pulls : r.maxKnown === false ? L.guaranteeUnknown : L.noGuarantee],
   ];
   return (
     <div className={`stats-row ${engine.status === "busy" ? "is-busy" : ""}`}>

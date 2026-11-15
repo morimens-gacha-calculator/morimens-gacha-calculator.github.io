@@ -26,6 +26,7 @@ export const BINOMIAL_CUTOFF = 1e-21;
 
 // A percentile counts as reached when the chance is within this of it (rounding in the sums).
 export const PERCENTILE_SLACK = 1e-12;
+export const TINY_CHANCE = 1e-6;            // below this, "done by pull t" comes from summing the pmf (exact for tiny chances)
 // The chances at one point of a banner must add up to 1 (or stay ≤ 1 before "rest") within this.
 export const CHANCE_SUM_TOLERANCE = 1e-9;
 // Two chain states are merged when their transitions agree within this (exact lumping).

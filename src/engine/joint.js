@@ -28,7 +28,7 @@ export function solveJoint(orig, opts, eps, maxPulls, onProgress) {
     survival.push(remaining);
   }
   st.close();
-  return { pmf, survival, labels: labelsOf(orig.tree, goalList(orig.goal), orig.start), states: N - 1, fullStates: c.fullStates, worst: c.worst };
+  return { pmf, survival, labels: labelsOf(orig.tree, goalList(orig.goal), orig.start), states: N - 1, fullStates: c.fullStates, worst: c.worst, best: c.best };
 }
 
 // "I have B pulls, what will I get?" — the chain without stopping at the goal,

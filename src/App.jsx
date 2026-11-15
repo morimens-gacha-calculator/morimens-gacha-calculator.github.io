@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { freshState, newId, presets, reqLabel, withPresetNames, setPrecision, DEFAULT_SETTINGS } from "./model.js";
 import { useEngine } from "./useEngine.js";
 import { decodeSetup, linkCode, makeShareLink, shareSummary } from "./share.js";
@@ -19,6 +19,7 @@ import ComparePanel from "./components/ComparePanel.jsx";
 const STORE_KEY = "banner-calc-v2";
 const COMPARE_KEY = "banner-calc-compare";
 const CUSTOM_KEY = "banner-calc-custom"; // your own banner, kept apart from the presets
+const SETTINGS_KEY = "banner-calc-settings"; // settings: shared by every banner and comparison
 const load = (key, check) => {
   try { const v = JSON.parse(localStorage.getItem(key)); return check(v) ? v : null; } catch { return null; }
 };
@@ -55,17 +56,30 @@ const snapshotOf = (s) => ({ preset: s.preset, banner: s.banner, goal: s.goal, g
 export default function App() {
   const [lang, setLang] = useState(loadLang);
   const T = LOCALES[lang];
-  const [state, setState] = useState(() => {
+  // Settings belong to the calculator, not to a banner: kept apart, so picking a banner,
+  // Reset, a shared link or loading a comparison never changes them
+  const [settings, setSettings] = useState(() => {
+    const saved = load(SETTINGS_KEY, (v) => v && typeof v === "object")
+      ?? load(STORE_KEY, (v) => v && v.banner)?.settings; // older versions kept them with the banner
+    const merged = { ...DEFAULT_SETTINGS, ...saved };
+    // the state limit that was briefly the default (2 million) goes back to the current default
+    if (Number(saved?.maxStates) === 2e6) merged.maxStates = DEFAULT_SETTINGS.maxStates;
+    return merged;
+  });
+  const [setup, setSetup] = useState(() => {
     const s = load(STORE_KEY, (v) => v && v.banner && Array.isArray(v.goal));
     if (!s) return freshState(DEFAULT_PRESET);
-    // settings saved by an older version: fill in new ones; the state limit that was briefly the
-    // default (2 million) goes back to the current default
-    const settings = { ...DEFAULT_SETTINGS, ...s.settings };
-    if (Number(s.settings?.maxStates) === 2e6) settings.maxStates = DEFAULT_SETTINGS.maxStates;
-    const restored = { ...s, settings };
     // a preset that no longer exists becomes your custom banner; presets get names in this language
-    return presets()[s.preset] ? withPresetNames(restored) : { ...restored, preset: "custom" };
+    return presets()[s.preset] ? withPresetNames(s) : { ...s, preset: "custom" };
   });
+  // What the components see: the setup with the current settings. Changes to it keep the
+  // settings as they are (they change only through setSettings).
+  const state = useMemo(() => ({ ...setup, settings }), [setup, settings]);
+  const setState = useCallback((v) => setSetup((cur) => {
+    const next = typeof v === "function" ? v({ ...cur, settings }) : v;
+    const { settings: _ignored, ...rest } = next; // eslint-disable-line no-unused-vars
+    return rest;
+  }), [settings]);
   const [tabRequest, setTabRequest] = useState(null);
   const [undoState, setUndoState] = useState(null); // the setup from just before a Reset or a shared link
   const [undoKind, setUndoKind] = useState("reset");
@@ -79,10 +93,16 @@ export default function App() {
   const [note, setNote] = useState("");
   setPrecision(state.settings.decimals ?? 2); // before any child formats a number
   const engine = useEngine(state, runToken, lang);
-  const compareResults = useCompare(compare.items, lang);
+  // every comparison is calculated with the current settings too
+  const calcKey = JSON.stringify(["pct", "eps", "maxPulls", "maxStates", "method", "noLimits"].map((k) => settings[k]));
+  const compareItems = useMemo(() => compare.items.map((it) => ({ ...it, snapshot: { ...it.snapshot, settings } })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [compare.items, calcKey]);
+  const compareResults = useCompare(compareItems, lang);
   const P = presets();
 
-  useEffect(() => store(STORE_KEY, state), [state]);
+  useEffect(() => store(STORE_KEY, setup), [setup]);
+  useEffect(() => store(SETTINGS_KEY, settings), [settings]);
   useEffect(() => { if (state.preset === "custom") store(CUSTOM_KEY, snapshotOf(state)); }, [state]);
   useEffect(() => store(COMPARE_KEY, compare), [compare]);
   useEffect(() => store("banner-calc-theme", theme), [theme]);
@@ -183,7 +203,7 @@ export default function App() {
 
             <div className="workspace">
               <div className="inputs-col">
-                <SetupCard state={state} update={update} setState={setState} tabRequest={tabRequest} />
+                <SetupCard state={state} update={update} setState={setState} setSettings={setSettings} tabRequest={tabRequest} />
                 <PullPlan state={state} update={update} engine={engine}
                   onCalculate={() => setRunToken((t) => t + 1)} onAddCompare={addToCompare} note={note} />
                 <TargetSection state={state} update={update} engine={engine} />
@@ -198,16 +218,16 @@ export default function App() {
                 </div>
                 {view === "single" ? (
                   <>
-                    <StatsRow engine={engine} />
+                    <StatsRow engine={engine} settings={state.settings} />
                     <ResultChart state={state} update={update} engine={engine} theme={theme} />
                     <div className="detail-tabs" role="tablist" aria-label={T.app.detailTabs}>
                       <button type="button" role="tab" aria-selected={detail === "dist"} className={`chip-tab ${detail === "dist" ? "is-active" : ""}`} onClick={() => setDetail("dist")}>{T.app.detailDist}</button>
                       <button type="button" role="tab" aria-selected={detail === "pct"} className={`chip-tab ${detail === "pct" ? "is-active" : ""}`} onClick={() => setDetail("pct")}>{T.app.detailPct}</button>
                     </div>
-                    {detail === "dist" ? <Distribution state={state} engine={engine} /> : <PercentileTable engine={engine} />}
+                    {detail === "dist" ? <Distribution state={state} engine={engine} /> : <PercentileTable engine={engine} settings={state.settings} />}
                   </>
                 ) : (
-                  <ComparePanel {...compareApi} theme={theme} />
+                  <ComparePanel {...compareApi} theme={theme} settings={state.settings} />
                 )}
               </div>
             </div>

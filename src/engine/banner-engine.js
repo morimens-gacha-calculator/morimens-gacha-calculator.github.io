@@ -47,11 +47,12 @@
 //   streak: { "1,1": [0, 2] },      node path → [last alternative index, run length]
 //   owned:  { "1,1,0": [2, 0, 1],   per-item copies of a pool, in item order
 //             "1,0": 3 } }          or a total; paths must not be nested in each other
-import { MAX_ENTRY_STATES, DEFAULT_EPS, DEFAULT_MAX_PULLS, DEFAULT_MAX_STATES, PERCENTILE_SLACK } from "./settings.js";
+import { MAX_ENTRY_STATES, TINY_CHANCE, DEFAULT_EPS, DEFAULT_MAX_PULLS, DEFAULT_MAX_STATES, PERCENTILE_SLACK } from "./settings.js";
 import { EngineError } from "./errors.js";
 
 import { cached, now } from "./cache.js";
 import { worstCase } from "./worst.js";
+import { bestCase } from "./best.js";
 import { MAX_GROUPS, expandSubsets } from "./goal.js";
 import { budgetReport, solveJoint } from "./joint.js";
 import { budgetLayered, planLayered, solveLayered } from "./layered.js";
@@ -60,6 +61,7 @@ import { budgetSplit, planSplit, solveSplit } from "./split.js";
 // Also part of the engine's interface (used by tests and tools)
 export { compile } from "./chain.js";
 export { worstCase } from "./worst.js";
+export { bestCase } from "./best.js";
 export { expandSubsets } from "./goal.js";
 export { clearCache } from "./cache.js";
 export { setCancelCheck } from "./cancel.js";
@@ -111,6 +113,36 @@ function choosePlan({ tree, goal, goalMode, start, eps, maxStates, method, onPro
   return { layered, split, orig, tree: ex.tree, goal: ex.goal, opts: { start: ex.start, goalMode, maxStates, onProgress } };
 }
 
+// Earliest and latest pull the goal can be met on (best.js, worst.js): exact, small
+// calculations of their own, shared by solve and budgetOnly
+function extremesFor(tree, goal, start, goalMode, maxStates) {
+  return cached("extremes", [tree, goal, start, goalMode, maxStates], () => {
+    const tryIt = (fn) => {
+      try { return { v: fn(tree, goal, start, goalMode, maxStates), known: true }; }
+      catch (e) { if (e?.code === "cancelled") throw e; return { v: null, known: false }; }
+    };
+    const lo = tryIt(bestCase), hi = tryIt(worstCase);
+    return { min: lo.v, minKnown: lo.known, max: hi.v, maxKnown: hi.known };
+  });
+}
+// Make the ends of a "met by pull t" curve exact: 0 before the earliest possible pull, 1 from
+// the worst case on, and in between strictly between 0 and 1. The layered method's FFTs leave
+// noise of ~1e-16, which could otherwise read as 0% for a possible goal or 100% for one that
+// isn't guaranteed. (Number.MIN_VALUE stands for "possible, but below what can be computed".)
+const ALMOST_ONE = 1 - 2 ** -53;
+function exactEnds(curve, min, max) {
+  for (let t = 0; t < curve.length; t++) {
+    if (min != null && t < min) curve[t] = 0;
+    else if (max != null && t >= max) curve[t] = 1;
+    else curve[t] = Math.min(ALMOST_ONE, Math.max(min != null ? Number.MIN_VALUE : 0, curve[t]));
+  }
+}
+function exactReport(report, ex) {
+  exactEnds(report.goalByPull, ex.min, ex.max);
+  report.chanceGoal = report.goalByPull[report.pulls];
+  return report;
+}
+
 export function solve({
   tree,
   goal,
@@ -142,9 +174,23 @@ export function solve({
 
   const { pmf, survival } = res;
   const t = survival.length - 1, remaining = survival[t];
+  // best and worst case: the joint chain has them; otherwise separate small calculations
+  const ex = layered || split
+    ? extremesFor(tree, goal, start, goalMode, maxStates)
+    : { min: res.best ?? null, minKnown: true, max: res.worst ?? (remaining === 0 ? t : null), maxKnown: true };
+  const worst = { max: ex.max, known: ex.maxKnown };
   let mean = 0, m2 = 0;
   for (let i = 0; i < t; i++) { mean += survival[i]; m2 += (2 * i + 1) * survival[i]; }
-  const cdf = Float64Array.from(survival, (sv) => 1 - sv);
+  // P(done by t): 1 − survival, except while that's tiny: there it would be rounding noise
+  // around 0 (even negative), so the running sum of the pmf is used, which keeps chances like
+  // 1e-60 instead of showing them as 0
+  let run = 0;
+  const cdf = Float64Array.from(survival, (sv, i) => {
+    run += pmf[i];
+    const v = 1 - sv;
+    return v > TINY_CHANCE ? v : Math.min(1, Math.max(0, run));
+  });
+  exactEnds(cdf, ex.min, ex.max);
   const quantile = (q) => {
     for (let i = 0; i < cdf.length; i++) if (cdf[i] >= q - PERCENTILE_SLACK) return i;
     return null;
@@ -155,13 +201,6 @@ export function solve({
   for (const b of chanceAt) chances[b] = b >= cdf.length ? 1 - remaining : cdf[Math.max(0, b)];
   let mode = 0;
   for (let i = 1; i < pmf.length; i++) if (pmf[i] > pmf[mode]) mode = i;
-  // the worst case: the joint chain has it; otherwise a separate small calculation (worst.js)
-  const worst = layered || split
-    ? cached("worst", [tree, goal, start, goalMode, maxStates], () => {
-      try { return { max: worstCase(tree, goal, start, goalMode, maxStates), known: true }; }
-      catch (e) { if (e?.code === "cancelled") throw e; return { max: null, known: false }; }
-    })
-    : { max: res.worst ?? (remaining === 0 ? t : null), known: true };
 
   return {
     requirements: res.labels,
@@ -171,15 +210,17 @@ export function solve({
     mode,                               // single most likely pull to finish on
     percentiles: pct,
     chanceAt: chances,
+    min: ex.min,                        // exact best case: the earliest pull the goal can be met on
+    minKnown: ex.minKnown,              // false: too big to work out
     max: worst.max,                     // exact worst case (pulls), null if the goal can be delayed forever
     maxKnown: worst.known,              // false: the worst case was too big to work out
     tail: remaining,                    // probability not covered (0 or < eps)
-    pmf: Float64Array.from(pmf),        // chart: P(goal first met on pull t)
+    pmf: Float64Array.from(pmf, (v, i) => ((ex.min != null && i < ex.min) || (ex.max != null && i > ex.max) ? 0 : v)), // chart: P(goal first met on pull t)
     cdf,                                // chart: P(goal met within t pulls)
-    budget: budget == null ? null
-      : layered ? budgetLayered(layered, budget, prog.budget)
+    budget: budget == null ? null : exactReport(
+      layered ? budgetLayered(layered, budget, prog.budget)
       : split ? budgetSplit(orig.tree, split, { ...budgetOpts, start: orig.start }, budget)
-      : budgetReport(exTree, exGoal, budgetOpts, budget),
+      : budgetReport(exTree, exGoal, budgetOpts, budget), ex),
     method: layered ? "layered" : split ? "split" : "joint",
     states: res.states,
     statesBeforeReduction: res.fullStates,
@@ -192,7 +233,8 @@ export function budgetOnly({ tree, goal, goalMode = "all", start = {}, budget, e
   const { layered, split, opts, tree: exTree, goal: exGoal, orig } = choosePlan({ tree, goal, goalMode, start, eps, maxStates, method, onProgress });
   // numbered as the last step after solve({ budgetAfter: true }) with the same goal
   const prog = progressSteps(onProgress, layered ? "layered" : split ? "split" : "joint", true);
-  if (layered) return budgetLayered(layered, budget, prog.budget);
-  if (split) return budgetSplit(orig.tree, split, { ...opts, start: orig.start, onProgress: prog.budget }, budget);
-  return budgetReport(exTree, exGoal, { ...opts, onProgress: prog.budget }, budget);
+  const ex = extremesFor(tree, goal, start, goalMode, maxStates);
+  if (layered) return exactReport(budgetLayered(layered, budget, prog.budget), ex);
+  if (split) return exactReport(budgetSplit(orig.tree, split, { ...opts, start: orig.start, onProgress: prog.budget }, budget), ex);
+  return exactReport(budgetReport(exTree, exGoal, { ...opts, onProgress: prog.budget }, budget), ex);
 }

@@ -100,7 +100,9 @@ export default function ResultChart({ state, update, engine, theme }) {
       const x = quantile(p / 100);
       if (x != null) markers.push({ x, label: p === 50 ? L.median(fmtInt(x)) : L.pctAt(p, fmtInt(x)), color: C.guide });
     }
-    if (lines.worst && r.max != null) markers.push({ x: r.max, label: L.worst(fmtInt(r.max)), color: C.guide });
+    const show = state.settings;
+    if (lines.best && r.min != null && r.min > 0 && show.showBest !== false) markers.push({ x: r.min, label: L.best(fmtInt(r.min)), color: C.guide });
+    if (lines.worst && r.max != null && show.showWorst !== false) markers.push({ x: r.max, label: L.worst(fmtInt(r.max)), color: C.guide });
     for (const c of lines.custom) markers.push({ x: c, label: L.atPull(fmtInt(c), fmtPct(chanceAt(c))), color: C.guide });
     if (lines.target && target != null) {
       markers.push({ x: target, strong: true, color: C.marker,
@@ -149,7 +151,8 @@ export default function ResultChart({ state, update, engine, theme }) {
           ))}
         </div>
         <div className="row toolbar-menus">
-          <LinesMenu lines={lines} setLines={setLines} pctOptions={pctOptions} hasWorst={r?.max != null} worstUnknown={r?.maxKnown === false} mode={state.mode} />
+          <LinesMenu lines={lines} setLines={setLines} pctOptions={pctOptions} hasWorst={r?.max != null} worstUnknown={r?.maxKnown === false} mode={state.mode}
+          showBest={state.settings.showBest !== false} showWorst={state.settings.showWorst !== false} hasBest={r?.min != null} />
           <ExportMenu result={engine.status === "busy" ? null : r} chartRef={chartRef} state={state} viewName={views.find(([v]) => v === active)?.[1]} />
         </div>
       </div>
@@ -226,7 +229,7 @@ function ExportMenu({ result, chartRef, state, viewName }) {
 }
 
 // "Lines ▾" menu: tick which reference lines to draw, and add lines at any pull
-function LinesMenu({ lines, setLines, pctOptions, hasWorst, worstUnknown, mode }) {
+function LinesMenu({ lines, setLines, pctOptions, hasWorst, worstUnknown, mode, showBest, showWorst, hasBest }) {
   const L = useT().chart;
   const { open, setOpen, ref } = usePopup();
   const [newLine, setNewLine] = useState(100);
@@ -244,10 +247,16 @@ function LinesMenu({ lines, setLines, pctOptions, hasWorst, worstUnknown, mode }
           {pctOptions.map((p) => (
             <label className="check" key={p}><input type="checkbox" checked={lines.pcts.includes(p)} onChange={() => togglePct(p)} />{p === 50 ? L.lineMedian : L.linePct(p)}</label>
           ))}
-          <label className="check" title={hasWorst ? undefined : worstUnknown ? L.worstUnknown : L.noWorst}>
+          {showBest && (
+            <label className="check">
+              <input type="checkbox" checked={lines.best !== false} disabled={!hasBest} onChange={(e) => setLines({ best: e.target.checked })} />
+              <span className={hasBest ? "" : "muted"}>{L.lineBest}</span>
+            </label>
+          )}
+          {showWorst && <label className="check" title={hasWorst ? undefined : worstUnknown ? L.worstUnknown : L.noWorst}>
             <input type="checkbox" checked={lines.worst} disabled={!hasWorst} onChange={(e) => setLines({ worst: e.target.checked })} />
             <span className={hasWorst ? "" : "muted"}>{L.lineWorst}</span>
-          </label>
+          </label>}
           <div className="lines-title">{L.customLines}</div>
           <div className="row">
             <NumberInput className="custom-input w-s" min={1} value={newLine} onChange={setNewLine} aria-label={L.addLineLabel}

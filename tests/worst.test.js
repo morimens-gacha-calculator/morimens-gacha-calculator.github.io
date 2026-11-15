@@ -2,7 +2,7 @@
 // split method gives the distribution (worst.js). It must equal the joint chain's exact answer.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { solve, worstCase } from "../src/engine/banner-engine.js";
+import { bestCase, solve, worstCase } from "../src/engine/banner-engine.js";
 import { preset, rng } from "./helpers.js";
 
 const trees = {
@@ -12,7 +12,7 @@ const trees = {
 };
 const pools = { sr: [["0,0", 3]], two: [["0,0", 2], ["0,1", 3]], single: [["0,1", 3]] };
 
-test("worst case = joint chain's, on random goals (types, subsets, owned, any/all)", () => {
+test("best and worst case = joint chain's, on random goals (types, subsets, owned, any/all)", () => {
   const { next: R } = rng(5);
   const pick = (a) => a[Math.floor(R() * a.length)];
   let checked = 0, bounded = 0;
@@ -37,6 +37,8 @@ test("worst case = joint chain's, on random goals (types, subsets, owned, any/al
     let J;
     try { J = solve({ tree, goal: rows, goalMode, start, method: "joint", eps: 1e-9 }); } catch { continue; } // e.g. k above a subset's size
     assert.equal(worstCase(tree, rows, start, goalMode, 2e6), J.max, JSON.stringify({ key, goalMode, rows, start }));
+    assert.equal(bestCase(tree, rows, start, goalMode, 2e6), J.min, `best: ${JSON.stringify({ key, goalMode, rows, start })}`);
+    if (J.pmf.length > 1) assert.equal(J.pmf.findIndex((v) => v > 0), J.min, "the first possible pull");
     checked++;
     if (J.max != null) bounded++;
   }
@@ -60,4 +62,16 @@ test("no worst case when an item can be avoided forever", () => {
   assert.equal(r.maxKnown, true);
   // pigeonhole: any one character ×3 is forced after 19·2 + 1 characters
   assert.ok(worstCase(K.tree, [{ path: "0,0", type: "distinct", k: 1, copies: 3 }], {}, "all", 2e6) > 0);
+});
+
+test("layered: exactly 0 before the earliest possible pull, positive from it", () => {
+  const K = preset("kaleido2");
+  // 76 characters can't come more than 2 in a row: 37 wheels between them, so 113 SSRs at least
+  const goal = [{ path: "0,0", type: "distinct", k: 19, copies: 4 }, { path: "0,1", type: "distinct", k: 5, copies: 4 }];
+  const r = solve({ ...K, goal, budget: 113 });
+  assert.equal(r.method, "layered");
+  assert.equal(r.min, 113);
+  assert.equal(r.cdf[112], 0);
+  assert.ok(r.cdf[113] > 0 && r.budget.chanceGoal > 0);
+  assert.ok(r.cdf.every((v) => v < 1), "never shown as certain: no worst case");
 });

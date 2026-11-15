@@ -51,3 +51,10 @@ test("specific item of a single-item outcome", () => {
   const r = solve({ tree: [["1/4", null, 1], ["3/4", null, null]], goal: [{ path: "0", type: "specific", item: 0, copies: 2 }], method: "joint" });
   assertClose(r.mean, 8, 1e-9);
 });
+
+test("tiny chances by pull stay exact instead of rounding to 0", () => {
+  // 6 copies at 1% each: by pull 6 the chance is 1e-12, far below rounding noise of 1 − survival
+  const r = solve({ tree: [{ name: "hit", p: 0.01 }, { name: "miss", p: "rest" }], goal: [{ path: "0", copies: 6 }], method: "joint" });
+  assert.ok(Math.abs(r.cdf[6] - 1e-12) < 1e-24, `cdf[6] = ${r.cdf[6]}`);
+  assert.equal(r.cdf[5], 0);
+});
