@@ -477,3 +477,12 @@ input[type="number"]::-webkit-outer-spin-button, input[type="number"]::-webkit-i
   .data-buttons { flex-wrap: nowrap; gap: 6px; }
   .data-buttons .btn { padding: 7px 10px; font-size: 13.5px; white-space: nowrap; }
 }
+
+/* ── On/off switch (Settings → No limits) ── */
+.switch-row { display: flex; align-items: center; gap: 10px; height: 38px; color: var(--ink-2); }
+.switch { appearance: none; -webkit-appearance: none; width: 42px; height: 24px; border-radius: 999px; background: var(--field); border: 1px solid var(--line); position: relative; cursor: pointer; flex: none; margin: 0; transition: background 0.15s; }
+.switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: var(--muted); transition: transform 0.15s, background 0.15s; }
+.switch:checked { background: var(--accent); border-color: var(--accent); }
+.switch:checked::after { transform: translateX(18px); background: var(--primary-ink); }
+@media (prefers-reduced-motion: reduce) { .switch, .switch::after { transition: none; } }
+.custom-input:disabled { opacity: 0.55; cursor: not-allowed; }

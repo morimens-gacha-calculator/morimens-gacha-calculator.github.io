@@ -164,11 +164,21 @@ function SettingsPanel({ state, update }) {
       <SettingRow label={L.eps} hint={L.epsHint}>
         <input type="text" className="custom-input" value={s.eps} onChange={(e) => set("eps", e.target.value)} />
       </SettingRow>
+      <SettingRow label={L.noLimits} hint={L.noLimitsHint}>
+        <span className="switch-row">
+          <input type="checkbox" className="switch" checked={!!s.noLimits} onChange={(e) => set("noLimits", e.target.checked)} />
+          <span>{s.noLimits ? L.on : L.off}</span>
+        </span>
+      </SettingRow>
       <SettingRow label={L.maxPulls}>
-        <NumberInput className="custom-input" min={1} fallback={1000000} value={s.maxPulls} onChange={(v) => set("maxPulls", v)} />
+        {s.noLimits
+          ? <input type="text" className="custom-input" value={L.unlimited} disabled readOnly />
+          : <NumberInput className="custom-input" min={1} fallback={1000000} value={s.maxPulls} onChange={(v) => set("maxPulls", v)} />}
       </SettingRow>
       <SettingRow label={L.maxStates}>
-        <NumberInput className="custom-input" min={1000} fallback={1000000} value={s.maxStates} onChange={(v) => set("maxStates", v)} />
+        {s.noLimits
+          ? <input type="text" className="custom-input" value={L.unlimited} disabled readOnly />
+          : <NumberInput className="custom-input" min={1000} fallback={1000000} value={s.maxStates} onChange={(v) => set("maxStates", v)} />}
       </SettingRow>
       <SettingRow label={L.method}>
         <select className="select" value={s.method} onChange={(e) => set("method", e.target.value)}>

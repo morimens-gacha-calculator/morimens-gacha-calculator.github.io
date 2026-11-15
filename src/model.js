@@ -117,7 +117,7 @@ export function customTemplate() {
 // Which reference lines the chart draws (the "Lines" menu)
 export const DEFAULT_LINES = { target: true, mean: true, pcts: [50, 90], worst: true, custom: [] };
 
-export const DEFAULT_SETTINGS = { pct: "10, 25, 50, 75, 90, 95, 99", eps: "1e-13", maxPulls: 1000000, maxStates: 1000000, method: "auto", decimals: 2 };
+export const DEFAULT_SETTINGS = { pct: "10, 25, 50, 75, 90, 95, 99", eps: "1e-13", maxPulls: 1000000, maxStates: 1000000, method: "auto", decimals: 2, noLimits: false };
 
 export function freshState(key) {
   const p = key === "custom" ? customTemplate() : presets()[key];
@@ -302,8 +302,9 @@ export function buildQuery(state) {
     ...q,
     percentiles: pct.length ? pct : [50, 90],
     eps: Math.max(0, num(settings.eps, 1e-13)),
-    maxPulls: Math.max(1, num(settings.maxPulls, 1e6)),
-    maxStates: Math.max(1000, num(settings.maxStates, 1e6)),
+    // "No limits" lifts both safety limits; the calculation can then run as long as it needs
+    maxPulls: settings.noLimits ? Infinity : Math.max(1, num(settings.maxPulls, 1e6)),
+    maxStates: settings.noLimits ? Infinity : Math.max(1000, num(settings.maxStates, 1e6)),
     method: settings.method,
   };
 }
