@@ -771,7 +771,7 @@ function planLayered(tree, goal, opts, eps, force) {
   const G = [...groups.values()];
   if (G.length > 2) return null;
   const perItem = G.some((x) => x.reqs.some((r) => (r.type ?? "total") !== "total" || Array.isArray(r.items)));
-  if (!force && (G.length < 2 || !perItem)) return null; // the other methods are already cheap here
+  if (!force && !perItem) return null; // plain totals: the other methods are already cheap here
 
   // The event: the deepest node that contains every targeted outcome
   let pre = G[0].path.slice(0, -1);
