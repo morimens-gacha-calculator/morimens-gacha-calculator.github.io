@@ -59,13 +59,14 @@ export function eventsBound(gap, B) {
 // P(τ_m ≤ B) for m = 1, 2, … by Parseval against the indicator of t ≤ B, over half the
 // frequencies (the rest mirror them). Stops at the first m below 1e-15 (mCount); asks for more
 // events than the estimate if none is that small yet.
-export function eventsByPull(gap1, gap, B) {
+export function eventsByPull(gap1, gap, B, tick = null) {
   for (let M = eventsBound(gap, B); ; M = Math.min(B + 1, M * 2)) {
     const L = fftLength(gap1, gap, M, B);
     const G = transformed(gap, L), G1 = transformed(gap1, L);
     const I = transformed(Array.from({ length: B + 1 }, () => 1), L);
     const acc = new Float64Array(M + 1);
     for (let z = 0; z <= L / 2; z++) {
+      if (tick && (z & 2047) === 0) tick(z / (L / 2));
       const gr = G.re[z], gi = G.im[z], hr = G1.re[z], hi = G1.im[z];
       const wgt = z === 0 || z === L / 2 ? 1 : 2;
       let wr = hr * I.re[z] + hi * I.im[z], wi = hi * I.re[z] - hr * I.im[z]; // G1·conj(I)
@@ -89,13 +90,14 @@ export function eventsByPull(gap1, gap, B) {
 
 // For each per-event sequence f (f[m], m = 0…M), the curve Σ_m P(exactly m events by t)·f(m),
 // t = 0…B: Horner on the differences over half the frequencies, an inverse FFT, a running sum.
-export function curvesByPull(gap1, gap, B, M, fs) {
+export function curvesByPull(gap1, gap, B, M, fs, tick = null) {
   const L = fftLength(gap1, gap, M, B);
   const G = transformed(gap, L), G1 = transformed(gap1, L);
-  return fs.map((f) => {
+  return fs.map((f, c) => {
     const d = Float64Array.from({ length: M + 1 }, (_, m) => (m === 0 ? 0 : f[m] - f[m - 1]));
     const outR = new Float64Array(L), outI = new Float64Array(L);
     for (let z = 0; z <= L / 2; z++) {
+      if (tick && (z & 2047) === 0) tick((c + z / (L / 2)) / fs.length);
       const gr = G.re[z], gi = G.im[z];
       let xr = 0, xi = 0;
       for (let m = M; m >= 1; m--) {

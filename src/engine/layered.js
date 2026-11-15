@@ -19,7 +19,7 @@ import { addScaled, makeReport } from "./report.js";
 import { chainSizeEstimate, poolBudget, poolNotMet } from "./pool-formulas.js";
 import { poolChain, poolChainBudget, poolChainNotMet, poolPlanFor } from "./pools.js";
 import { curvesByPull, eventsByPull, fft } from "./renewal.js";
-import { canonTree, nodeAtCanon, normaliseNode, pathKey, resolvePath } from "./tree.js";
+import { canonTree, findAlt, nodeAtCanon, normaliseNode, pathKey, resolvePath } from "./tree.js";
 
 export function planLayered(tree, goal, opts, eps, force) {
   const list = goalList(goal);
@@ -85,7 +85,8 @@ export function planLayered(tree, goal, opts, eps, force) {
   if (!force && jointEst < 3000) return { small: true };
 
   const tol = eps / 1000;
-  const items = pools.map((x) => {
+  const items = pools.map((x, i) => {
+    opts.onPlan?.({ done: i, total: pools.length });
     // the last value is below the cut-off: treat it as 0 so capped hit counts count as done
     if (x.formula) {
       const S = cached("poolS", [x.formula, tol], () => Array.from(poolNotMet(x.formula, tol)));
@@ -96,7 +97,10 @@ export function planLayered(tree, goal, opts, eps, force) {
   });
 
   const rows = rowsOf(tree, list, start), labels = rows.map((r) => r.label);
+  // what an event is called, for progress messages ("SSR"); none when every pull is an event
+  const eventName = pre.length ? (findAlt(root, pre)?.name ?? null) : null;
   return {
+    eventName,
     maxStates: opts.maxStates, reqs: list, rows, labels, G, items, ic, pre, goalMode: opts.goalMode,
     gap: timing?.gap ?? null, gap1: timing?.gap1 ?? null, outerStates: timing?.states ?? 0,
   };
@@ -194,7 +198,7 @@ export function solveLayered(plan, eps, maxPulls, onProgress) {
       if (p) u += p * undoneAt(cells, i, K, S, goalMode);
     }
     U.push(Math.min(1, u));
-    if (onProgress && (m & 15) === 0) onProgress({ phase: "calc", t: m, remaining: u, eps });
+    if (onProgress && (m & 15) === 0) onProgress({ phase: "events", t: m, remaining: u, eps, name: plan.eventName });
     if (m >= 1e6) throw new EngineError("tooManyEvents", { limit: 1e6 }, "Too big: the goal needs more than a million events.");
     return u > eps / 10;
   });
@@ -229,7 +233,7 @@ export function solveLayered(plan, eps, maxPulls, onProgress) {
       outR[z] = ar * hr[z] - ai * hi[z] + pMa[0];
       outI[z] = ar * hi[z] + ai * hr[z];
       if (z > 0 && z < L / 2) { outR[L - z] = outR[z]; outI[L - z] = -outI[z]; }
-      if (onProgress && (z & 4095) === 0) onProgress({ phase: "budget", t: z, total: L / 2 });
+      if (onProgress && (z & 1023) === 0) onProgress({ phase: "combine", done: z, total: L / 2 });
     }
     fft(outR, outI, true);
     pmfT = Array.from(outR.subarray(0, len), (v) => (v > 0 ? v : 0));
@@ -251,14 +255,19 @@ export function solveLayered(plan, eps, maxPulls, onProgress) {
   };
 }
 
-export function budgetLayered(plan, B) {
+export function budgetLayered(plan, B, onProgress = null) {
   if (!(Number.isInteger(B) && B >= 0)) throw new EngineError("badBudget", {}, "budget must be a whole number of pulls ≥ 0");
   const { items, gap, gap1, goalMode } = plan;
+  // progress through the parts, by rough share of the work: events by pull 15%, pool pieces 20%,
+  // event walk 15%, curves 50%
+  const report = (frac) => onProgress?.({ done: Math.min(1, frac), total: 1 });
+  report(0);
 
   // How many events (SSRs) can happen within B pulls: P(m-th event by pull B) for each m
   // (tauB[m]), up to the first m where it's below 1e-15. "mCount or more" counts as mCount.
-  const ev = gap ? eventsByPull(gap1, gap, B) : null;
+  const ev = gap ? eventsByPull(gap1, gap, B, (f) => report(0.15 * f)) : null;
   const mCount = gap ? ev.mCount : B + 1;
+  report(0.15);
   // Per pool: progress of each row after n hits, until every row is maxed out
   const perGroup = items.map((x) => (x.formula
     ? cached("poolBudget", [x.formula, mCount], () => poolBudget(x.formula, mCount, x.S))
@@ -266,10 +275,12 @@ export function budgetLayered(plan, B) {
 
   // Per event count m: distribution of hits on each pool, and the chance the goal is met
   // (each pool's hit distribution kept only over its non-zero range: { lo, w[n − lo] })
+  report(0.35);
   const caps = perGroup.map((x) => x.G.length - 1);
   const G = perGroup.map((x) => x.G), K = caps.length;
   const hitDist = [];
   walkEvents(plan, caps, (m, cells) => {
+    if ((m & 31) === 0) report(0.35 + 0.15 * (m / Math.max(1, mCount)));
     const lo = caps.map(() => Infinity), hi = caps.map(() => -1);
     for (let i = 0; i < cells.n; i++) {
       if (!cells.p[i]) continue;
@@ -300,7 +311,7 @@ export function budgetLayered(plan, B) {
   const done = hitDist.map((h) => h.done);
   // Curves over pulls: goal chance and each row's expected progress
   const [goalByPull, ...expectedByPull] = gap
-    ? curvesByPull(gap1, gap, B, mCount, [done, ...Em])
+    ? curvesByPull(gap1, gap, B, mCount, [done, ...Em], (f) => report(0.5 + 0.5 * f))
     : [done, ...Em].map((f) => Float64Array.from({ length: B + 1 }, (_, t) => f[Math.min(t, f.length - 1)]));
   // P(exactly m events by pull B), for the distributions at B
   const pAtB = (m) => (gap

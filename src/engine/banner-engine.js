@@ -63,15 +63,35 @@ const DEFAULT_PERCENTILES = [10, 25, 50, 75, 90, 95, 99];
 //             pool formulas + event chain + FFT over the gaps. Chosen unless the joint chain is tiny.
 //   split   — rows on one pool when the banner doesn't restart at each event.
 //   joint   — everything tracked together; tiny goals (gives the exact worst case) and the rest.
+// Progress messages: { phase, step, steps, … } where step / steps say where in the whole
+// calculation it is (steps is null while the method is still being chosen). Phases:
+//   plan     working out item odds (pool formulas)        { done, total } pools
+//   build    building the state chain                     { states }      (reduce: simplifying)
+//   calc     pulls of the joint or split method           { t, remaining, eps }
+//   events   events of the layered method (e.g. SSRs)     { t, remaining, eps, name }
+//   combine  turning events into pulls (FFT)              { done, total }
+//   budget   the budget report                            { done, total }
+const STEPS = { layered: ["plan", "events", "combine"], split: ["plan", "build", "calc"], joint: ["build", "calc"] };
+function progressSteps(onProgress, methodName, budgetToo) {
+  if (!onProgress) return { main: null, budget: null };
+  const steps = [...STEPS[methodName], ...(budgetToo ? ["budget"] : [])], n = steps.length;
+  return {
+    main: (p) => onProgress({ ...p, step: Math.max(1, steps.indexOf(p.phase === "reduce" ? "build" : p.phase) + 1), steps: n }),
+    // everything the budget report does is its step (a chain it builds shows as "budget" too)
+    budget: (p) => onProgress({ ...p, phase: "budget", step: n, steps: n }),
+  };
+}
+
 function choosePlan({ tree, goal, goalMode, start, eps, maxStates, method, onProgress }) {
   const orig = { tree, goal, start };
+  const onPlan = onProgress && ((p) => onProgress({ ...p, phase: "plan", step: 1, steps: null }));
   const lp = method === "auto" || method === "layered"
-    ? cached("planLayered", [tree, goal, start, goalMode, maxStates, eps, method], () => planLayered(tree, goal, { start, goalMode, maxStates }, eps, method === "layered"))
+    ? cached("planLayered", [tree, goal, start, goalMode, maxStates, eps, method], () => planLayered(tree, goal, { start, goalMode, maxStates, onPlan }, eps, method === "layered"))
     : null;
   const small = !!lp?.small, layered = small ? null : lp;
   if (method === "layered" && !layered) throw new EngineError("layeredDoesntFit", { groups: MAX_GROUPS }, `method "layered" needs every row on one pool or single outcome (up to ${MAX_GROUPS} of them), under an event that restarts the banner`);
   const split = !layered && !(small && method === "auto") && (method === "auto" || method === "split")
-    ? cached("planSplit", [tree, goal, start, goalMode, maxStates, eps, method], () => planSplit(tree, goal, { start, goalMode, maxStates }, eps, method === "split"))
+    ? cached("planSplit", [tree, goal, start, goalMode, maxStates, eps, method], () => planSplit(tree, goal, { start, goalMode, maxStates, onPlan }, eps, method === "split"))
     : null;
   if (method === "split" && !split) throw new EngineError("splitDoesntFit", {}, `method "split" needs all requirements on one pool`);
   const ex = expandSubsets(tree, goal, start);
@@ -90,17 +110,22 @@ export function solve({
   maxPulls = 1e6,
   maxStates = 1e6,    // refuse calculations bigger than this (protects the browser tab)
   method = "auto",    // "auto" | "joint" | "split" | "layered" (see choosePlan)
-  onProgress = null,  // optional callback: { phase: "build" | "calc" | "budget", ... }
+  onProgress = null,  // optional callback, see progressSteps
+  budgetAfter = false, // a budgetOnly call follows (counted in the progress steps)
 }) {
   const t0 = now();
-  const { layered, split, opts, tree: exTree, goal: exGoal, orig } = choosePlan({ tree, goal, goalMode, start, eps, maxStates, method, onProgress });
+  const plan = choosePlan({ tree, goal, goalMode, start, eps, maxStates, method, onProgress });
+  const { layered, split, tree: exTree, goal: exGoal, orig } = plan;
+  const prog = progressSteps(onProgress, layered ? "layered" : split ? "split" : "joint", budget != null || budgetAfter);
+  const opts = { ...plan.opts, onProgress: prog.main };
+  const budgetOpts = { ...plan.opts, onProgress: prog.budget };
 
   // the distribution doesn't depend on the budget: changing only the budget reuses it
   const distKey = [tree, goal, start, goalMode, maxStates, eps, method, maxPulls];
   let res;
-  if (layered) res = cached("distLayered", distKey, () => solveLayered(layered, eps, maxPulls, onProgress));
+  if (layered) res = cached("distLayered", distKey, () => solveLayered(layered, eps, maxPulls, prog.main));
   else if (split) res = cached("distSplit", distKey, () => solveSplit(orig.tree, split, { ...opts, start: orig.start }, eps, maxPulls));
-  else res = solveJoint(orig, opts, eps, maxPulls, onProgress);
+  else res = solveJoint(orig, opts, eps, maxPulls, prog.main);
 
   const { pmf, survival } = res;
   const t = survival.length - 1, remaining = survival[t];
@@ -131,9 +156,9 @@ export function solve({
     pmf: Float64Array.from(pmf),        // chart: P(goal first met on pull t)
     cdf,                                // chart: P(goal met within t pulls)
     budget: budget == null ? null
-      : layered ? budgetLayered(layered, budget)
-      : split ? budgetSplit(orig.tree, split, { ...opts, start: orig.start }, budget)
-      : budgetReport(exTree, exGoal, opts, budget),
+      : layered ? budgetLayered(layered, budget, prog.budget)
+      : split ? budgetSplit(orig.tree, split, { ...budgetOpts, start: orig.start }, budget)
+      : budgetReport(exTree, exGoal, budgetOpts, budget),
     method: layered ? "layered" : split ? "split" : "joint",
     states: res.states,
     statesBeforeReduction: res.fullStates,
@@ -144,7 +169,9 @@ export function solve({
 // Budget report only ("what will I get with B pulls"), without the pulls-to-goal part.
 export function budgetOnly({ tree, goal, goalMode = "all", start = {}, budget, eps = 1e-13, maxStates = 1e6, method = "auto", onProgress = null }) {
   const { layered, split, opts, tree: exTree, goal: exGoal, orig } = choosePlan({ tree, goal, goalMode, start, eps, maxStates, method, onProgress });
-  if (layered) return budgetLayered(layered, budget);
-  if (split) return budgetSplit(orig.tree, split, { ...opts, start: orig.start }, budget);
-  return budgetReport(exTree, exGoal, opts, budget);
+  // numbered as the last step after solve({ budgetAfter: true }) with the same goal
+  const prog = progressSteps(onProgress, layered ? "layered" : split ? "split" : "joint", true);
+  if (layered) return budgetLayered(layered, budget, prog.budget);
+  if (split) return budgetSplit(orig.tree, split, { ...opts, start: orig.start, onProgress: prog.budget }, budget);
+  return budgetReport(exTree, exGoal, { ...opts, onProgress: prog.budget }, budget);
 }

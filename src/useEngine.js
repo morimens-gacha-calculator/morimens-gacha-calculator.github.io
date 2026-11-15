@@ -12,8 +12,7 @@ export function useEngine(state, runToken, lang) {
   const busyRef = useRef(false);
   const idRef = useRef(0);
   const startRef = useRef(0);
-  const samplesRef = useRef([]);   // recent { at, t, remaining } during the main calculation
-  const budgetRef = useRef(null);  // pulls the budget report will run, if any
+  const samplesRef = useRef([]);   // recent progress messages of the current step
   const timerRef = useRef(null);   // pending start (the short pause after typing)
 
   const makeWorker = () => {
@@ -21,7 +20,7 @@ export function useEngine(state, runToken, lang) {
     w.onmessage = ({ data }) => {
       if (data.id !== idRef.current) return;
       if (data.progress) {
-        const progress = estimate(data.progress, samplesRef.current, budgetRef.current, startRef.current);
+        const progress = estimate(data.progress, samplesRef.current, startRef.current);
         setRes((prev) => (prev.status === "busy" ? { ...prev, progress } : prev));
         return;
       }
@@ -67,7 +66,6 @@ export function useEngine(state, runToken, lang) {
       busyRef.current = true;
       startRef.current = performance.now();
       samplesRef.current = [];
-      budgetRef.current = state.mode === "budget" ? state.budget : null;
       workerRef.current.postMessage({
         id: idRef.current,
         mode: state.mode,
@@ -86,28 +84,32 @@ export function useEngine(state, runToken, lang) {
 
 // Time left, from how fast pulls are being calculated and how fast the
 // "not done yet" probability is shrinking (it shrinks roughly geometrically in the tail).
-function estimate(p, samples, budget, startedAt) {
+// Turns a progress message from the worker into what the page shows: phase, step i of n, and an
+// estimate of the time left in this step (null until there is enough to go on).
+//   calc / events — the chance still left shrinks about geometrically: extrapolate it to eps
+//   plan / combine / budget — done of total: extrapolate the recent rate
+// samples: this step's recent messages (cleared when the phase changes).
+export function estimate(p, samples, startedAt) {
   const elapsed = p.at - startedAt;
-  if (p.phase === "build" || p.phase === "reduce") return { phase: p.phase, states: p.states, eta: null, elapsed };
-  if (p.phase === "budget") {
-    const prev = samples.find((s) => s.phase === "budget");
-    samples.push({ ...p });
-    if (!prev || p.t <= prev.t) return { phase: "budget", eta: null, elapsed };
-    const rate = (p.t - prev.t) / (p.at - prev.at); // pulls per ms
-    return { phase: "budget", eta: (p.total - p.t) / rate / 1000, elapsed };
-  }
-  // main calculation
+  if (samples.phase !== p.phase || samples.step !== p.step) { samples.length = 0; samples.phase = p.phase; samples.step = p.step; }
   samples.push({ ...p });
-  while (samples.length > 2 && p.at - samples[0].at > 1500) samples.shift(); // keep ~1.5 s of history
-  const first = samples.find((s) => s.phase === "calc");
-  let eta = null;
-  // Only once half the probability is accounted for; earlier the tail's shape is still unknown
-  if (first && p.t > first.t && p.remaining < 0.5 && p.remaining > 0 && first.remaining > p.remaining && p.eps > 0) {
-    const rate = (p.t - first.t) / (p.at - first.at);                   // pulls per ms
-    const perPull = Math.log(p.remaining / first.remaining) / (p.t - first.t); // log-shrink per pull
-    const pullsLeft = Math.max(0, Math.log(p.eps / p.remaining) / perPull);
-    const extra = budget ? budget : 0;                                  // the budget report runs afterwards
-    eta = (pullsLeft + extra) / rate / 1000;
+  while (samples.length > 2 && p.at - samples[0].at > 1500) samples.shift(); // ~1.5 s of history
+  const out = { phase: p.phase, step: p.step ?? null, steps: p.steps ?? null, elapsed, eta: null };
+  const first = samples[0];
+  if (p.phase === "build" || p.phase === "reduce") return { ...out, states: p.states };
+  if (p.phase === "calc" || p.phase === "events") {
+    // only once half the probability is accounted for; earlier the tail's shape is unknown
+    if (p.t > first.t && p.remaining < 0.5 && p.remaining > 0 && first.remaining > p.remaining && p.eps > 0) {
+      const rate = (p.t - first.t) / (p.at - first.at);                         // steps per ms
+      const perStep = Math.log(p.remaining / first.remaining) / (p.t - first.t); // log-shrink per step
+      out.eta = Math.max(0, Math.log(p.eps / p.remaining) / perStep) / rate / 1000;
+    }
+    return { ...out, t: p.t, name: p.name ?? null };
   }
-  return { phase: "calc", pulls: p.t, eta, elapsed };
+  // done of total
+  if (p.total > 0 && p.done > first.done && p.at > first.at) {
+    const rate = (p.done - first.done) / (p.at - first.at);
+    out.eta = (p.total - p.done) / rate / 1000;
+  }
+  return { ...out, done: p.done, total: p.total };
 }

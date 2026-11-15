@@ -59,7 +59,7 @@ self.onmessage = async ({ data }) => {
     if (mode === "budget") {
       result = solve({ ...query, onProgress });
     } else {
-      result = solve({ ...query, budget: null, onProgress });
+      result = solve({ ...query, budget: null, budgetAfter: true, onProgress });
       const q = Math.min(1, Math.max(0, desired / 100));
       let pulls = null;
       if (q >= 1) pulls = result.max; // 100% only exists with a hard guarantee

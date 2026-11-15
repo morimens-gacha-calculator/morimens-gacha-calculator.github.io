@@ -48,7 +48,7 @@ export function budgetReport(tree, goal, opts, B) {
   };
   record(0);
   for (let t = 1; t <= B; t++) {
-    if (opts.onProgress && (t & 15) === 0) opts.onProgress({ phase: "budget", t, total: B });
+    if (opts.onProgress && (t & 15) === 0) opts.onProgress({ phase: "budget", done: t, total: B });
     st.step();
     record(t);
   }

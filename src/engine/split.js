@@ -29,6 +29,7 @@ export function planSplit(tree, goal, opts, eps, force) {
   const fp = poolPlanFor(x, ownedVal, opts.goalMode);
   const chain = fp ? null : poolChain(x, ownedVal, opts);
   const tol = eps / 1000;
+  opts.onPlan?.({ done: 0, total: 1 });
   let S, itemsWorst = null;
   if (fp) {
     S = Array.from(cached("poolS", [fp, tol], () => poolNotMet(fp, tol)));
@@ -103,7 +104,7 @@ export function budgetSplit(tree, plan, opts, B) {
     };
     record(0);
     for (let t = 1; t <= B; t++) {
-      if (opts.onProgress && (t & 15) === 0) opts.onProgress({ phase: "budget", t, total: B });
+      if (opts.onProgress && (t & 15) === 0) opts.onProgress({ phase: "budget", done: t, total: B });
       sink += st.step();
       record(t);
     }
