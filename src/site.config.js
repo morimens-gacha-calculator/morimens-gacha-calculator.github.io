@@ -5,8 +5,8 @@
 // and point these imports at them. Set `desktop: null` for no image.
 // `mobile` is used on screens narrower than 720px; reuse the desktop image if you have one size.
 // The tint laid over the image is --bg-fade in src/styles.css (one value per theme).
-import desktop from "./assets/background.webp";
-import mobile from "./assets/background-small.webp";
+import desktop from "./assets/background.png";
+import mobile from "./assets/background-small.png";
 
 export const BACKGROUND = {
   desktop,
@@ -19,7 +19,7 @@ export const BACKGROUND = {
 // ── Footer ──
 export const SITE_NAME = "morimens-gacha-calculator.github.io";
 export const BANNERS_PATCH = "2.6.5"; // game version the built-in banners match; update with new patches
-export const SOURCE_URL = "https://github.com/your-name/your-repo"; // "Source code" link in the footer; null hides it
+export const SOURCE_URL = "https://github.com/morimens-gacha-calculator/morimens-gacha-calculator.github.io"; // "Source code" link in the footer; null hides it
 
 // ── Defaults ──
 export const DEFAULT_THEME = "dark";     // "dark" or "light"
