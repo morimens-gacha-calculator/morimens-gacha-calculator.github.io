@@ -78,8 +78,8 @@ function windowsFor(a, b, H) {
   if (have) windowCells -= have.w.length;
   WINDOWS.set(key, entry);
   windowCells += used;
-  // keep memory bounded (~64 MB of weights)
-  for (const [k, v] of WINDOWS) { if (windowCells <= 8e6 || k === key) continue; WINDOWS.delete(k); windowCells -= v.w.length; }
+  // keep memory bounded (~16 MB of weights)
+  for (const [k, v] of WINDOWS) { if (windowCells <= 2e6 || k === key) continue; WINDOWS.delete(k); windowCells -= v.w.length; }
   return entry;
 }
 

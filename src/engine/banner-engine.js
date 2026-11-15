@@ -943,60 +943,83 @@ function planLayered(tree, goal, opts, eps, force) {
   };
 }
 
-// Walks the event chain one event at a time, tracking hits per targeted outcome (capped).
-// State index = eventState·W + Σ_g hits_g·stride_g. visit(m, cur, active, W) after each event count m.
+// Walks the event chain one event at a time, tracking hits per targeted outcome (capped at
+// caps[g], where that pool's goal is certain). Only cells that can hold probability are stored:
+// after m events the hits add up to at most m, so the live cells are a thin slice of all
+// combinations (for Kaleido, where every SSR is a character or a wheel, a line: a + b = m).
+// visit(m, cells) after each event count m = 0, 1, …; return false to stop. cells = { n, x, h, p }:
+// event state x[i], hits h[i·K + g] on group g, probability p[i].
 function walkEvents(plan, caps, visit) {
   const { ic } = plan;
-  const K = caps.length, stride = new Array(K), radix = caps.map((c) => c + 1);
-  let W = 1;
-  for (let g = K - 1; g >= 0; g--) { stride[g] = W; W *= radix[g]; }
-  const size = ic.N * W;
-  // cells here are plain numbers with no stored transitions, ~10× cheaper than chain states
+  const K = caps.length;
   const limit = Math.min(10 * (plan.maxStates ?? 1e6), 4e7);
-  if (size > limit)
-    throw new Error(`Too big: ${size.toLocaleString("en")} states needed for the event layer (limit ${limit.toLocaleString("en")}).`);
-  let cur = new Float64Array(size), next = new Float64Array(size);
-  let active = [ic.startIndex * W], nextActive = [];
-  const mark = new Int32Array(size).fill(-1);
-  cur[ic.startIndex * W] = 1;
-  const geom = { W, stride, radix, K };
+  let maxDeg = 1;
+  for (let x = 1; x < ic.N; x++) maxDeg = Math.max(maxDeg, ic.rowStart[x + 1] - ic.rowStart[x]);
+  const cells = (cap) => ({ n: 0, cap, x: new Int32Array(cap), h: new Int32Array(cap * K), p: new Float64Array(cap) });
+  const grow = (c) => {
+    const d = cells(c.cap * 2);
+    d.n = c.n; d.x.set(c.x); d.h.set(c.h); d.p.set(c.p);
+    return d;
+  };
+  let cur = cells(1024), next = cells(1024);
+  cur.n = 1; cur.x[0] = ic.startIndex; cur.p[0] = 1;
+  let table = new Int32Array(4096), mask = 4095;
+  const h2 = new Int32Array(K);
   for (let m = 0; ; m++) {
-    if (visit(m, cur, active, geom) === false) return;
-    for (const i of active) {
-      const p = cur[i];
-      cur[i] = 0;
+    if (visit(m, cur) === false) return;
+    // hash table for merging transitions that land on the same cell (≤ 50% full)
+    const bound = cur.n * maxDeg;
+    if (table.length < 2 * bound) { let size = table.length; while (size < 2 * bound) size *= 2; table = new Int32Array(size); mask = size - 1; }
+    table.fill(-1);
+    next.n = 0;
+    for (let i = 0; i < cur.n; i++) {
+      const p = cur.p[i];
       if (!p) continue;
-      const x = Math.floor(i / W), r = i - x * W;
+      const x = cur.x[i], hb = i * K;
       for (let e = ic.rowStart[x]; e < ic.rowStart[x + 1]; e++) {
-        const l = ic.lab[e];
-        let r2 = r;
-        if (l) {
-          const g = l - 1;
-          if (Math.floor(r / stride[g]) % radix[g] < caps[g]) r2 += stride[g];
+        const x2 = ic.col[e], l = ic.lab[e];
+        let hash = Math.imul(x2 + 1, 0x9e3779b1);
+        for (let g = 0; g < K; g++) {
+          let v = cur.h[hb + g];
+          if (l === g + 1 && v < caps[g]) v++;
+          h2[g] = v;
+          hash = Math.imul(hash ^ (v + 0x7f4a7c15), 0x85ebca6b);
         }
-        const j = ic.col[e] * W + r2;
-        if (mark[j] !== m) { mark[j] = m; nextActive.push(j); }
-        next[j] += p * ic.prob[e];
+        hash ^= hash >>> 15;
+        let slot = hash & mask, j;
+        for (;;) {
+          j = table[slot];
+          if (j < 0) break;
+          if (next.x[j] === x2) {
+            let same = true;
+            for (let g = 0; g < K; g++) if (next.h[j * K + g] !== h2[g]) { same = false; break; }
+            if (same) break;
+          }
+          slot = (slot + 1) & mask;
+        }
+        const q = p * ic.prob[e];
+        if (j >= 0) { next.p[j] += q; continue; }
+        if (next.n === next.cap) next = grow(next);
+        j = next.n++;
+        next.x[j] = x2; next.p[j] = q;
+        for (let g = 0; g < K; g++) next.h[j * K + g] = h2[g];
+        table[slot] = j;
       }
     }
+    if (next.n > limit)
+      throw new Error(`Too big: ${next.n.toLocaleString("en")} states needed for the event layer (limit ${limit.toLocaleString("en")}).`);
     [cur, next] = [next, cur];
-    [active, nextActive] = [nextActive, []];
   }
 }
 
-// P(goal not met) for every combination of hits, from each group's "not met after n hits"
-function undoneTable(geom, notMet, goalMode) {
-  const { W, stride, radix, K } = geom;
-  const out = new Float64Array(W);
-  for (let r = 0; r < W; r++) {
-    let u = goalMode === "any" ? 1 : 0;
-    for (let g = 0; g < K; g++) {
-      const s = notMet[g][Math.floor(r / stride[g]) % radix[g]];
-      u = goalMode === "any" ? u * s : u + s - u * s; // all: 1 − ∏(1 − s) without cancellation
-    }
-    out[r] = u;
+// P(goal not met) for one cell, from each group's "not met after n hits"
+function undoneAt(cells, i, K, notMet, goalMode) {
+  let u = goalMode === "any" ? 1 : 0;
+  for (let g = 0; g < K; g++) {
+    const s = notMet[g][cells.h[i * K + g]];
+    u = goalMode === "any" ? u * s : u + s - u * s; // all: 1 − ∏(1 − s) without cancellation
   }
-  return out;
+  return u;
 }
 
 function solveLayered(plan, eps, maxPulls, onProgress) {
@@ -1004,13 +1027,12 @@ function solveLayered(plan, eps, maxPulls, onProgress) {
 
   // How many events the goal needs: U[m] = P(M > m)
   const U = [];
-  let table = null;
-  walkEvents(plan, items.map((x) => x.cap), (m, cur, active, geom) => {
-    table ??= undoneTable(geom, items.map((x) => x.S), goalMode);
+  const S = items.map((x) => x.S), K = items.length;
+  walkEvents(plan, items.map((x) => x.cap), (m, cells) => {
     let u = 0;
-    for (const i of active) {
-      const p = cur[i];
-      if (p) u += p * table[i % geom.W];
+    for (let i = 0; i < cells.n; i++) {
+      const p = cells.p[i];
+      if (p) u += p * undoneAt(cells, i, K, S, goalMode);
     }
     U.push(Math.min(1, u));
     if (onProgress && (m & 15) === 0) onProgress({ phase: "calc", t: m, remaining: u, eps });
@@ -1104,19 +1126,23 @@ function budgetLayered(plan, B) {
     : cached("poolChainBudget", [x.chain, mCount], () => poolChainBudget(x.chain, mCount))));
 
   // Per event count m: distribution of hits on each pool, and the chance the goal is met
+  // (each pool's hit distribution kept only over its non-zero range: { lo, w[n − lo] })
   const caps = perGroup.map((x) => x.G.length - 1);
+  const G = perGroup.map((x) => x.G), K = caps.length;
   const hitDist = [];
-  let table = null;
-  walkEvents(plan, caps, (m, cur, active, geom) => {
-    table ??= undoneTable(geom, perGroup.map((x) => x.G), goalMode);
-    const g = caps.map((c) => new Float64Array(c + 1));
+  walkEvents(plan, caps, (m, cells) => {
+    const lo = caps.map(() => Infinity), hi = caps.map(() => -1);
+    for (let i = 0; i < cells.n; i++) {
+      if (!cells.p[i]) continue;
+      for (let k = 0; k < K; k++) { const v = cells.h[i * K + k]; if (v < lo[k]) lo[k] = v; if (v > hi[k]) hi[k] = v; }
+    }
+    const g = caps.map((_, k) => (hi[k] < 0 ? { lo: 0, w: new Float64Array(0) } : { lo: lo[k], w: new Float64Array(hi[k] - lo[k] + 1) }));
     let undone = 0;
-    for (const i of active) {
-      const p = cur[i];
+    for (let i = 0; i < cells.n; i++) {
+      const p = cells.p[i];
       if (!p) continue;
-      const r = i % geom.W;
-      undone += p * table[r];
-      for (let k = 0; k < geom.K; k++) g[k][Math.floor(r / geom.stride[k]) % geom.radix[k]] += p;
+      undone += p * undoneAt(cells, i, K, G, goalMode);
+      for (let k = 0; k < K; k++) g[k].w[cells.h[i * K + k] - g[k].lo] += p;
     }
     hitDist.push({ g, done: 1 - undone });
     return m < mCount;
@@ -1128,7 +1154,12 @@ function budgetLayered(plan, B) {
 
   const expectedByPull = order.map(() => new Float64Array(B + 1));
   const goalByPull = new Float64Array(B + 1);
-  const Em = order.map(({ gi, i }) => hitDist.map((h) => h.g[gi].reduce((s, p, n) => s + p * perGroup[gi].E[i][n], 0)));
+  const Em = order.map(({ gi, i }) => hitDist.map((h) => {
+    const { lo, w } = h.g[gi], E = perGroup[gi].E[i];
+    let s = 0;
+    for (let j = 0; j < w.length; j++) s += w[j] * E[lo + j];
+    return s;
+  }));
   for (let t = 0; t <= B; t++) {
     for (let m = 0; m <= mCount && m < hitDist.length; m++) {
       const p = pN(t, m);
@@ -1146,11 +1177,13 @@ function budgetLayered(plan, B) {
       for (let m = 0; m <= mCount && m < hitDist.length; m++) {
         const p = pN(B, m);
         if (!p) continue;
-        hitDist[m].g[gi].forEach((q, n) => {
-          if (!q) return;
-          const d = perGroup[gi].D[i][n];
+        const { lo, w } = hitDist[m].g[gi];
+        for (let j = 0; j < w.length; j++) {
+          const q = w[j];
+          if (!q) continue;
+          const d = perGroup[gi].D[i][lo + j];
           for (let v = 0; v < d.length && v <= r.max; v++) dist[v] += p * q * d[v];
-        });
+        }
       }
       const target = r.type === "distinct" ? r.k : r.copies;
       let chanceMet = 0;

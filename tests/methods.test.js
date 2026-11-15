@@ -100,3 +100,20 @@ test("big goal: all 19 ×6 + all 19 wheels ×6 runs and is sensible", () => {
   assert.ok(Math.abs(r.mean - 9814.56) < 0.01, `mean ${r.mean}`);
   assert.ok(r.tail < 1e-12);
 });
+
+// The event layer stores only reachable cells; these values come from the earlier version that
+// stored every combination (results must be identical).
+const REF_ANNIV = { chance: 0.7395014272518445, rows: [6.000000000000036, 6.000000000000036, 9.713754142000301] };
+test("big goal: all 19 ×16 + all 19 wheels ×16 within the default limits", () => {
+  const r = solve({ ...K2, goal: [{ path: "0,0", type: "distinct", k: 19, copies: 16 }, { path: "0,1", type: "distinct", k: 19, copies: 16 }], percentiles: [99] });
+  assert.equal(r.method, "layered");
+  assert.ok(Math.abs(r.mean - 20689.89117535) < 1e-6, `mean ${r.mean}`);
+  assert.equal(r.percentiles.p99, 27263);
+});
+
+test("event layer, 3 groups with a budget report (pinned)", () => {
+  const r = solve({ ...A, goal: [{ path: "0,0,0", copies: 6 }, { path: "0,0,1", copies: 6 }, { path: "0,1", type: "distinct", k: 10, copies: 4 }], budget: 5000 });
+  assert.ok(Math.abs(r.mean - 4493.180529) < 1e-6, `mean ${r.mean}`);
+  assert.ok(Math.abs(r.budget.chanceGoal - REF_ANNIV.chance) < 1e-12, `chance ${r.budget.chanceGoal}`);
+  r.budget.requirements.forEach((x, i) => assert.ok(Math.abs(x.mean - REF_ANNIV.rows[i]) < 1e-9, `row ${i}: ${x.mean}`));
+});
