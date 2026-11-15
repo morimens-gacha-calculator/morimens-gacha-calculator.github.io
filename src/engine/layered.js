@@ -13,7 +13,8 @@
 // The joint state space is never built, so goals needing billions of joint states are cheap.
 import { cached } from "./cache.js";
 import { compile, firstHitPmf } from "./chain.js";
-import { MAX_GROUPS, goalList, groupRows, labelsOf, ownedFor, rowInfo } from "./goal.js";
+import { MAX_GROUPS, goalList, groupRows, ownedFor, rowsOf } from "./goal.js";
+import { addScaled, makeReport } from "./report.js";
 import { chainSizeEstimate, poolBudget, poolNotMet } from "./pool-formulas.js";
 import { poolChain, poolChainBudget, poolChainNotMet, poolPlanFor } from "./pools.js";
 import { curvesByPull, eventsByPull, fft } from "./renewal.js";
@@ -93,9 +94,9 @@ export function planLayered(tree, goal, opts, eps, force) {
     return { ...x, S: [...r.S.slice(0, -1), 0], cap: r.S.length - 1, states: r.states };
   });
 
-  const labels = labelsOf(tree, list, start);
+  const rows = rowsOf(tree, list, start), labels = rows.map((r) => r.label);
   return {
-    maxStates: opts.maxStates, reqs: list, labels, G, items, ic, pre, goalMode: opts.goalMode,
+    maxStates: opts.maxStates, reqs: list, rows, labels, G, items, ic, pre, goalMode: opts.goalMode,
     gap: timing?.gap ?? null, gap1: timing?.gap1 ?? null, outerStates: timing?.states ?? 0,
   };
 }
@@ -287,7 +288,7 @@ export function budgetLayered(plan, B) {
 
   // Rows, in the goal's order
   const order = [];
-  plan.G.forEach((grp, gi) => grp.idx.forEach((orig, i) => { order[orig] = { gi, i, r: rowInfo(grp.reqs[i], grp.alt) }; }));
+  plan.G.forEach((grp, gi) => grp.idx.forEach((orig, i) => { order[orig] = { gi, i, r: plan.rows[orig] }; }));
 
   const Em = order.map(({ gi, i }) => hitDist.map((h) => {
     const { lo, w } = h.g[gi], E = perGroup[gi].E[i];
@@ -300,36 +301,19 @@ export function budgetLayered(plan, B) {
   const [goalByPull, ...expectedByPull] = gap
     ? curvesByPull(gap1, gap, B, mCount, [done, ...Em])
     : [done, ...Em].map((f) => Float64Array.from({ length: B + 1 }, (_, t) => f[Math.min(t, f.length - 1)]));
-  for (let t = 0; t <= B; t++) goalByPull[t] = Math.min(1, Math.max(0, goalByPull[t]));
   // P(exactly m events by pull B), for the distributions at B
   const pAtB = (m) => (gap
     ? (m === 0 ? 1 : ev.tauB[m]) - (m < mCount ? ev.tauB[m + 1] : 0)
     : (m === Math.min(B, mCount) ? 1 : 0));
-  return {
-    pulls: B,
-    chanceGoal: goalByPull[B],
-    goalByPull,
-    requirements: order.map(({ gi, i, r }, k) => {
-      const dist = new Float64Array(r.max + 1);
-      for (let m = 0; m <= mCount && m < hitDist.length; m++) {
-        const p = Math.max(0, pAtB(m));
-        if (!p) continue;
-        const { lo, w } = hitDist[m].g[gi];
-        for (let j = 0; j < w.length; j++) {
-          const q = w[j];
-          if (!q) continue;
-          const d = perGroup[gi].D[i][lo + j];
-          for (let v = 0; v < d.length && v <= r.max; v++) dist[v] += p * q * d[v];
-        }
-      }
-      const target = r.type === "distinct" ? r.k : r.copies;
-      let chanceMet = 0;
-      for (let v = target; v <= r.max; v++) chanceMet += dist[v];
-      return {
-        label: plan.labels[k], type: r.type, copies: r.copies,
-        unit: r.type === "distinct" ? `items with ≥${r.copies} copies` : "copies",
-        target, dist, mean: expectedByPull[k][B], chanceMet, expectedByPull: expectedByPull[k],
-      };
-    }),
-  };
+  const distAtB = order.map(({ gi, i, r }) => {
+    const dist = new Float64Array(r.max + 1);
+    for (let m = 0; m <= mCount && m < hitDist.length; m++) {
+      const p = Math.max(0, pAtB(m));
+      if (!p) continue;
+      const { lo, w } = hitDist[m].g[gi];
+      for (let j = 0; j < w.length; j++) if (w[j]) addScaled(dist, perGroup[gi].D[i][lo + j], p * w[j], r.max);
+    }
+    return dist;
+  });
+  return makeReport(B, plan.rows, goalByPull, expectedByPull, distAtB);
 }

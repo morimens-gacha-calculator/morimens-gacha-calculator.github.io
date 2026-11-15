@@ -151,3 +151,23 @@ test("×16 budget report at 20,000 pulls (pinned to the version with the full ta
   assert.ok(Math.abs(b.requirements[1].mean - 18.956726634460832) < 1e-10);
   assert.ok(Math.abs(b.goalByPull[10000]) < 1e-11, "nothing by 10,000 pulls");
 });
+
+// Every method builds its budget report with the same builder: same rows, same shape
+test("budget reports have the same rows whichever method made them", () => {
+  const srTree = [
+    { name: "SSR", p: 0.02, pity: 40, children: [{ name: "pool", p: 1, count: 6, items: ["A", "B", "C", "D", "E", "F"] }] },
+    { name: "SR", p: 0.1, pity: 8 },
+    { name: "R", p: "rest" },
+  ];
+  const shape = (b) => b.requirements.map((r) => ({ label: r.label, type: r.type, copies: r.copies, target: r.target, len: r.dist.length }));
+  const checks = [
+    [{ ...K2, goal: [{ path: "0,0", type: "distinct", k: 2, copies: 2, items: [0, 1, 2] }, { path: "0,1", type: "total", copies: 3, have: 1 }, { path: "0,0", type: "specific", item: 4, copies: 2 }], budget: 200 }, ["joint", "layered"]],
+    [{ tree: srTree, goal: [{ path: "0,0", type: "distinct", k: 3, copies: 2 }, { path: "0,0", copies: 8 }, { path: "0,0", type: "specific", item: "B", copies: 1 }], budget: 200 }, ["joint", "split"]],
+    [{ tree: [["1/4", null, 1], ["3/4", null, null]], goal: [{ path: "0", type: "specific", item: 0, copies: 2 }], budget: 20 }, ["joint", "layered"]],
+  ];
+  for (const [q, methods] of checks) {
+    const [a, b] = methods.map((method) => solve({ ...q, method }).budget);
+    assert.deepEqual(shape(b), shape(a));
+    assert.ok(b.goalByPull.every((v) => v >= 0 && v <= 1) && a.goalByPull.every((v) => v >= 0 && v <= 1));
+  }
+});

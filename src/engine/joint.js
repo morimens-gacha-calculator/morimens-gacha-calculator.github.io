@@ -4,7 +4,8 @@
 // pools together, banners that don't restart at each event).
 import { makeStepper } from "./chain-step.js";
 import { compile } from "./chain.js";
-import { expandSubsets, goalList, labelsOf, mergeNamedRows } from "./goal.js";
+import { expandSubsets, goalList, labelsOf, mergeNamedRows, rowShape } from "./goal.js";
+import { makeReport } from "./report.js";
 
 // Distribution of the number of pulls: step the chain until less than eps is left
 export function solveJoint(orig, opts, eps, maxPulls, onProgress) {
@@ -52,26 +53,11 @@ export function budgetReport(tree, goal, opts, B) {
   }
   st.close();
   const cur = st.cur;
-  return {
-    pulls: B,
-    chanceGoal: goalByPull[B],          // P(goal met after B pulls)
-    goalByPull,                         // chart: same, for every pull 0..B
-    requirements: reqs.map((r, i) => {
-      const dist = new Float64Array(r.max + 1); // dist[v] = P(progress = v); top value = "v or more"
-      for (let k = 1; k < N; k++) dist[Math.min(prog[i][k], r.max)] += cur[k];
-      const target = r.type === "distinct" ? r.k : r.copies;
-      let chanceMet = 0;
-      for (let v = target; v <= r.max; v++) chanceMet += dist[v];
-      return {
-        label: r.label,
-        type: r.type, copies: r.copies,
-        unit: r.type === "distinct" ? `items with ≥${r.copies} copies` : "copies",
-        target,
-        dist,
-        mean: expectedByPull[i][B],
-        chanceMet,
-        expectedByPull: expectedByPull[i], // chart: expected progress after t pulls
-      };
-    }),
-  };
+  const rows = reqs.map(rowShape);
+  const distAtB = rows.map((r, i) => {
+    const dist = new Float64Array(r.max + 1);
+    for (let k = 1; k < N; k++) dist[Math.min(prog[i][k], r.max)] += cur[k];
+    return dist;
+  });
+  return makeReport(B, rows, goalByPull, expectedByPull, distAtB);
 }

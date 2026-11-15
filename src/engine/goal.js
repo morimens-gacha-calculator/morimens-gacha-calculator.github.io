@@ -160,8 +160,7 @@ export function expandSubsets(tree, goal, start = {}) {
 // Joint state space is never built, so goals needing billions of joint states become cheap.
 
 export function labelsOf(tree, list, start) {
-  const ex = expandSubsets(tree, list, start);
-  return parseGoal(normaliseNode(canonTree(ex.tree), []), ex.goal).map((r) => r.label);
+  return rowsOf(tree, list, start).map((r) => r.label);
 }
 
 export function resolveItem(alt, it, where) {
@@ -189,12 +188,16 @@ export function groupRows(root, list) {
 
 export const ownedFor = (root, start, x) => Object.entries(start.owned ?? {}).find(([k]) => pathKey(resolvePath(root, k)) === pathKey(x.path))?.[1];
 
-// Type, target and largest progress of a row (as the chain reports them)
-export function rowInfo(req, alt) {
-  const type = req.type ?? "total";
-  const copies = req.copies ?? 1;
-  if (type === "distinct") return { type, copies, k: req.k, max: Array.isArray(req.items) ? new Set(req.items).size : alt.count };
-  return { type: type === "specific" && alt.count === 1 ? "total" : type, copies, max: copies };
+// What a goal row is, for reports: type, copies, k, label, and its largest progress (the
+// length of its progress distribution − 1): copies for totals and specific items, the number of
+// items it looks at for "k different". One definition for every method.
+export function rowShape(r) {
+  return { label: r.label, type: r.type, copies: r.copies, k: r.k, max: r.type === "distinct" ? r.items : r.copies };
+}
+// The rows of a goal (with item subsets, owned copies), in the goal's order
+export function rowsOf(tree, list, start) {
+  const ex = expandSubsets(tree, list, start);
+  return parseGoal(normaliseNode(canonTree(ex.tree), []), ex.goal).map(rowShape);
 }
 
 // Joint chain only: "specific" rows on one pool with the same copies become one

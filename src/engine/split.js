@@ -6,7 +6,8 @@
 import { cached } from "./cache.js";
 import { makeStepper } from "./chain-step.js";
 import { compile } from "./chain.js";
-import { goalList, groupRows, labelsOf, ownedFor, rowInfo } from "./goal.js";
+import { goalList, groupRows, ownedFor, rowsOf } from "./goal.js";
+import { addScaled, makeReport } from "./report.js";
 import { chainSizeEstimate, poolBudget, poolNotMet } from "./pool-formulas.js";
 import { poolChain, poolChainBudget, poolChainNotMet, poolPlanFor } from "./pools.js";
 import { normaliseNode } from "./tree.js";
@@ -15,6 +16,8 @@ import { normaliseNode } from "./tree.js";
 // (pity, streaks). So: (a) the pool formulas give P(goal not met after n hits); (b) the banner
 // chain gives the distribution of hits on the pool after t pulls; combine. Exact. Used when the
 // layered method doesn't fit (the banner doesn't restart at each event).
+const withRows = (rows) => ({ rows, labels: rows.map((r) => r.label) });
+
 export function planSplit(tree, goal, opts, eps, force) {
   const list = goalList(goal);
   const root = normaliseNode(tree, []);
@@ -37,7 +40,7 @@ export function planSplit(tree, goal, opts, eps, force) {
   if (!force && fp && 4 * S.length >= chainSizeEstimate(fp)) return null;
   return {
     formula: fp, chain, S, nMax: S.length - 1, poolPath: x.path, alt: x.alt, reqs: x.reqs,
-    itemsGuaranteed: itemsWorst != null, labels: labelsOf(tree, list, opts.start),
+    itemsGuaranteed: itemsWorst != null, ...withRows(rowsOf(tree, list, opts.start)),
   };
 }
 
@@ -73,7 +76,7 @@ export function budgetSplit(tree, plan, opts, B) {
   const { D, E, G } = plan.formula
     ? cached("poolBudget", [plan.formula, B], () => poolBudget(plan.formula, B))
     : cached("poolChainBudget", [plan.chain, B], () => poolChainBudget(plan.chain, B));
-  const reqs = plan.reqs.map((r) => rowInfo(r, plan.alt));
+  const reqs = plan.rows;
   const nB = G.length - 1;
 
   // Banner chain: distribution of hits on the pool for every pull 0..B
@@ -81,7 +84,7 @@ export function budgetSplit(tree, plan, opts, B) {
   const expectedByPull = reqs.map(() => new Float64Array(B + 1));
   const goalByPull = new Float64Array(B + 1);
   const dist = reqs.map((r) => new Float64Array(r.max + 1));
-  const addD = (i, m, h) => { const d = D[i][h]; for (let v = 0; v < d.length && v <= reqs[i].max; v++) dist[i][v] += m * d[v]; };
+  const addD = (i, m, h) => addScaled(dist[i], D[i][h], m, reqs[i].max);
   if (nB === 0) {
     reqs.forEach((r, i) => { expectedByPull[i].fill(E[i][0]); addD(i, 1, 0); });
     goalByPull.fill(1 - G[0]);
@@ -110,20 +113,5 @@ export function budgetSplit(tree, plan, opts, B) {
       for (let k = 1; k < N; k++) if (bc[k]) addD(i, bc[k], hits[k]);
     }
   }
-  return {
-    pulls: B,
-    chanceGoal: goalByPull[B],
-    goalByPull,
-    requirements: reqs.map((r, i) => {
-      const target = r.type === "distinct" ? r.k : r.copies;
-      let chanceMet = 0;
-      for (let v = target; v <= r.max; v++) chanceMet += dist[i][v];
-      return {
-        label: plan.labels[i],
-        type: r.type, copies: r.copies,
-        unit: r.type === "distinct" ? `items with ≥${r.copies} copies` : "copies",
-        target, dist: dist[i], mean: expectedByPull[i][B], chanceMet, expectedByPull: expectedByPull[i],
-      };
-    }),
-  };
+  return makeReport(B, reqs, goalByPull, expectedByPull, dist);
 }
