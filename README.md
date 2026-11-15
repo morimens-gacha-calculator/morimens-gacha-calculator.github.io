@@ -33,8 +33,16 @@ test fails) and on pull requests.
 
 | File | What it does |
 |---|---|
-| `src/engine/banner-engine.js` | The exact calculation engine (no dependencies) |
+| `src/engine/banner-engine.js` | The engine's interface: `solve`, `budgetOnly`, and which method to use |
+| `src/engine/tree.js`, `goal.js` | Reading the banner tree and the goal rows (item subsets, labels) |
+| `src/engine/chain.js` | Building the state chain of a banner and goal; exact worst case |
+| `src/engine/joint.js`, `split.js`, `layered.js` | The three exact methods (see the top of each file) |
+| `src/engine/pool-formulas.js`, `pools.js` | Exact formulas for which items a pool gives |
+| `src/engine/renewal.js` | FFT and "SSRs by pull" helpers of the layered method |
+| `src/engine/chain-step.js`, `step-thread*.js`, `*.wat` | Fast chain stepping (WebAssembly, several cores) |
+| `src/engine/cache.js` | Reusing pieces between calculations |
 | `src/engine/engine.worker.js` | Runs the engine in a Web Worker |
+| `tests/` | Engine tests (`npm test`) |
 | `src/useEngine.js` | React hook: debounced, cancellable calls to the worker |
 | `src/model.js` | Editor model ↔ engine format, presets, building queries |
 | `src/components/` | UI: preset nav, setup card (pity / banner rules / settings), pull plan, question, chart, stats, tables |
