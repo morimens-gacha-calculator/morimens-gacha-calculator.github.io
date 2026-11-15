@@ -1,6 +1,7 @@
 // Per-pool pieces for the layered and split methods: the exact formulas (pool-formulas.js),
 // or a small chain over the pool's items when the formulas can't (total rows on subsets that
 // partly overlap).
+import { MAX_CHAIN_HITS, NEGLIGIBLE } from "./settings.js";
 import { advance, compile } from "./chain.js";
 import { expandSubsets, resolveItem } from "./goal.js";
 import { poolPlan } from "./pool-formulas.js";
@@ -33,7 +34,7 @@ export function poolChainNotMet(pc, tol) {
   const S = [mc.startIndex === 0 ? 0 : 1];
   let cur = new Float64Array(mc.N), next = new Float64Array(mc.N), miss = S[0];
   cur[mc.startIndex] = 1;
-  while (miss > 0 && miss >= tol && S.length < 1e5) {
+  while (miss > 0 && miss >= tol && S.length < MAX_CHAIN_HITS) {
     advance(cur, next, mc.N, mc.rowStart, mc.col, mc.prob);
     next[0] = 0;
     miss = 0;
@@ -61,7 +62,7 @@ export function poolChainBudget(pc, Hcap) {
     let g = 0, notMaxed = 0;
     for (let k = 1; k < mc.N; k++) if (cur[k]) { if (!mc.isDone(mc.states[k])) g += cur[k]; if (!maxed[k]) notMaxed += cur[k]; }
     G.push(g);
-    if (notMaxed < 1e-15) break;
+    if (notMaxed < NEGLIGIBLE) break;
     advance(cur, next, mc.N, mc.rowStart, mc.col, mc.prob);
     [cur, next] = [next, cur];
   }

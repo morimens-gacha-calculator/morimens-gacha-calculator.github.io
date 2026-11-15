@@ -41,6 +41,7 @@ test fails) and on pull requests.
 | `src/engine/renewal.js` | FFT and "SSRs by pull" helpers of the layered method |
 | `src/engine/chain-step.js`, `step-thread*.js`, `*.wat` | Fast chain stepping (WebAssembly, several cores) |
 | `src/engine/cache.js` | Reusing pieces between calculations |
+| `src/engine/settings.js` | Every accuracy setting, limit and speed trade-off, with the reason for its value |
 | `src/engine/engine.worker.js` | Runs the engine in a Web Worker |
 | `tests/` | Engine tests (`npm test`) |
 | `src/useEngine.js` | React hook: debounced, cancellable calls to the worker |

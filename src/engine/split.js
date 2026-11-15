@@ -3,6 +3,7 @@
 // (pity, streaks). So: (a) the pool formulas give P(goal not met after n hits); (b) the banner
 // chain gives the distribution of hits on the pool after t pulls; combine. Exact. Used when the
 // layered method doesn't fit (the banner doesn't restart at each event).
+import { SPLIT_ADVANTAGE, poolTolerance } from "./settings.js";
 import { EngineError } from "./errors.js";
 import { cached } from "./cache.js";
 import { makeStepper } from "./chain-step.js";
@@ -28,7 +29,7 @@ export function planSplit(tree, goal, opts, eps, force) {
   const ownedVal = ownedFor(root, opts.start, x);
   const fp = poolPlanFor(x, ownedVal, opts.goalMode);
   const chain = fp ? null : poolChain(x, ownedVal, opts);
-  const tol = eps / 1000;
+  const tol = poolTolerance(eps);
   opts.onPlan?.({ done: 0, total: 1 });
   let S, itemsWorst = null;
   if (fp) {
@@ -39,7 +40,7 @@ export function planSplit(tree, goal, opts, eps, force) {
   }
   S[S.length - 1] = 0;
   // split tracks banner × hits (up to nMax); joint tracks banner × item counters: pick the smaller
-  if (!force && fp && 4 * S.length >= chainSizeEstimate(fp)) return null;
+  if (!force && fp && SPLIT_ADVANTAGE * S.length >= chainSizeEstimate(fp)) return null;
   return {
     formula: fp, chain, S, nMax: S.length - 1, poolPath: x.path, alt: x.alt, reqs: x.reqs,
     itemsGuaranteed: itemsWorst != null, ...withRows(rowsOf(tree, list, opts.start)),

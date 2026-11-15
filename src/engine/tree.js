@@ -1,4 +1,5 @@
 // The banner tree: probabilities, normalised nodes, paths (by index or by name).
+import { CHANCE_SUM_TOLERANCE } from "./settings.js";
 import { EngineError, internalError } from "./errors.js";
 
 export function parseProb(x, where) { // where: outcome names, for messages
@@ -54,9 +55,9 @@ export function normaliseNode(raw, path, names = []) {
   const rests = node.alts.filter((a) => a.rest).length;
   const sum = node.alts.reduce((s, a) => s + a.p, 0);
   if (rests > 1) throw new EngineError("manyRest", { where: here }, `More than one "rest" at [${pathKey(path)}]`);
-  if (rests === 0 && Math.abs(sum - 1) > 1e-9)
+  if (rests === 0 && Math.abs(sum - 1) > CHANCE_SUM_TOLERANCE)
     throw new EngineError("chancesSum", { where: here, sum }, `Probabilities at [${pathKey(path)}] sum to ${sum}, not 1`);
-  if (rests === 1 && sum > 1 + 1e-9)
+  if (rests === 1 && sum > 1 + CHANCE_SUM_TOLERANCE)
     throw new EngineError("overOneBeforeRest", { where: here, sum }, `Probabilities at [${pathKey(path)}] exceed 1 before "rest"`);
   return node;
 }

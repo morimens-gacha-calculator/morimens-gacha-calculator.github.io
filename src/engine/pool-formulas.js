@@ -13,9 +13,10 @@
 // (given h hits on the union, Binomial(h, p) of them land in A). Identical items are combined
 // by repeated squaring. Every term is ≥ 0, so there's no cancellation. Markers are handled by
 // evaluating at roots of unity (|value| ≤ 1) and transforming back with an inverse DFT.
+import { BINOMIAL_CUTOFF, MARKER_ROUNDING, MAXED_OUT, MAX_POOL_HITS, NEGLIGIBLE, WEIGHT_CACHE_CELLS } from "./settings.js";
 import { EngineError } from "./errors.js";
 
-const WCUT = 1e-21; // binomial weights below this are skipped (all block values are ≤ 1 in size)
+const WCUT = BINOMIAL_CUTOFF; // binomial weights below this are skipped (all block values are ≤ 1 in size)
 
 const LF = new Float64Array(1 << 16);
 for (let i = 1; i < LF.length; i++) LF[i] = LF[i - 1] + Math.log(i);
@@ -80,7 +81,7 @@ function windowsFor(a, b, H) {
   WINDOWS.set(key, entry);
   windowCells += used;
   // keep memory bounded (~16 MB of weights)
-  for (const [k, v] of WINDOWS) { if (windowCells <= 2e6 || k === key) continue; WINDOWS.delete(k); windowCells -= v.w.length; }
+  for (const [k, v] of WINDOWS) { if (windowCells <= WEIGHT_CACHE_CELLS || k === key) continue; WINDOWS.delete(k); windowCells -= v.w.length; }
   return entry;
 }
 
@@ -430,15 +431,15 @@ function hitsBound(plan, tol, want) {
 }
 
 // S[h] = P(goal not met after h hits), h = 0…H, with S[H] < tol
-export function poolNotMet(plan, tol, Hmax = 1e5) {
+export function poolNotMet(plan, tol, Hmax = MAX_POOL_HITS) {
   if (plan.guaranteedAt != null) {
     // totals over the whole pool: the count is exactly h
     return Float64Array.from({ length: plan.guaranteedAt + 1 }, (_, h) => (h >= plan.guaranteedAt ? 0 : 1));
   }
   // rounding floor of the marker transform (about 1e-16 per value summed)
   const P = plan.rows.reduce((m, r) => m * (r.type === "distinct" && r.k > 1 && r.k < r.set.length ? r.set.length + 1 : 1), 1);
-  Hmax = Math.min(Hmax, 32768);
-  tol = Math.max(tol, P > 1 ? 8 * P * 1e-16 : 0);
+  Hmax = Math.min(Hmax, MAX_POOL_HITS);
+  tol = Math.max(tol, P > 1 ? P * MARKER_ROUNDING : 0);
   for (let H = Math.max(8, hitsBound(plan, tol, "met")); ; H *= 2) {
     const S = notMetCurve(plan, H);
     if (S[H] < tol || (plan.worstHits != null && H >= plan.worstHits)) {
@@ -458,12 +459,12 @@ export function poolBudget(plan, Hcap, knownNotMet = null) {
   const { rows, n, own } = plan;
   // up to where every row is at its maximum progress
   let H = Hcap;
-  for (let h0 = Math.max(8, hitsBound(plan, 1e-15, "maxed")); ; h0 *= 2) {
+  for (let h0 = Math.max(8, hitsBound(plan, NEGLIGIBLE, "maxed")); ; h0 *= 2) {
     const Hn = Math.min(Hcap, h0);
     const full = probOf(plan, systemFor(plan, allWant(plan, "maxed")), Hn);
-    if (full[Hn] >= 1 - 1e-14 || Hn >= Hcap) {
+    if (full[Hn] >= 1 - MAXED_OUT || Hn >= Hcap) {
       let end = Hn;
-      while (end > 0 && full[end - 1] >= 1 - 1e-14) end--;
+      while (end > 0 && full[end - 1] >= 1 - MAXED_OUT) end--;
       H = end;
       break;
     }

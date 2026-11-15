@@ -1,5 +1,6 @@
 // The finite Markov chain of a banner (and goal): building it, merging states that behave
 // alike, the exact worst case, and small helpers for stepping it.
+import { DEFAULT_MAX_STATES, LUMPING_TOLERANCE, MAX_GAP } from "./settings.js";
 import { EngineError, internalError } from "./errors.js";
 import { parseGoal } from "./goal.js";
 import { findAlt, findNode, isPrefix, leavesUnder, normaliseNode, resolvePath } from "./tree.js";
@@ -9,7 +10,7 @@ import { findAlt, findNode, isPrefix, leavesUnder, normaliseNode, resolvePath } 
 // (identical items are interchangeable, so only the histogram matters).
 // trackHits: list of paths. Instead of a goal, every transition is labelled with which of
 // these outcomes (1, 2, …) the pull reached, or 0 for none. Used by the layered method.
-export function compile(treeRaw, goalRaw, { start: startRaw = {}, goalMode = "all", absorb = true, maxStates = 1e6, onProgress = null, trackHits = null } = {}) {
+export function compile(treeRaw, goalRaw, { start: startRaw = {}, goalMode = "all", absorb = true, maxStates = DEFAULT_MAX_STATES, onProgress = null, trackHits = null } = {}) {
   const root = normaliseNode(treeRaw, []);
   let nVars = 0;
   const newVar = () => nVars++;
@@ -297,7 +298,7 @@ export function compile(treeRaw, goalRaw, { start: startRaw = {}, goalMode = "al
 
 // Merge states that differ only in variable x, if that is exact: every merged
 // state must have identical probabilities into every merged group.
-export function projectOut(states, rows, x, tol = 1e-12) {
+export function projectOut(states, rows, x, tol = LUMPING_TOLERANCE) {
   const N = states.length;
   const group = new Int32Array(N);
   const keyMap = new Map();
@@ -384,7 +385,7 @@ export function firstHitPmf(c, from, cut) {
   let cur = new Float64Array(c.N), next = new Float64Array(c.N);
   cur[from] = 1;
   let left = 1;
-  for (let t = 1; left > cut && t < 1e6; t++) {
+  for (let t = 1; left > cut && t < MAX_GAP; t++) {
     next.fill(0);
     let hit = 0;
     for (let k = 1; k < c.N; k++) {

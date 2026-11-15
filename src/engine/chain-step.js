@@ -13,6 +13,7 @@
 // st.close() releases the helpers; call it when done stepping.
 //
 // Source of the kernel: chain-step.wat (compiled with wabt; base64 below).
+import { HELPER_IDLE_MS, HELPER_START_MS, PARALLEL_MIN_EDGES, THREAD_TRIAL_PULLS } from "./settings.js";
 import { pullKernel, CTRL, CTRL_WORDS, MAX_WEIGHTS } from "./step-thread-core.js";
 import { internalError } from "./errors.js";
 
@@ -37,7 +38,7 @@ function kernelModule() {
 // already serve that shared memory and control block (see step-thread-core.js / initPool).
 let pool = null;
 export function setThreadPool(p) { pool = p && p.size ? p : null; }
-export const PARALLEL_MIN_EDGES = 150000; // below this, syncing threads costs more than it saves
+export { PARALLEL_MIN_EDGES }; // (from settings.js)
 
 // For the side that owns the helpers: one growable shared memory + control block, sent to each
 // helper with { type: "init", mem, ctrl, slot }. Returns null where shared memory isn't allowed.
@@ -176,7 +177,7 @@ function parallelStepper(c, p, mod) {
   let gen = 0, started = false, fallback = null;
   // Measure before committing: TRIAL pulls on all threads, then TRIAL on this one alone; keep
   // the faster (memory-bound loops don't always scale with cores).
-  const TRIAL = 24;
+  const TRIAL = THREAD_TRIAL_PULLS;
   let phase = "parallel-trial", tPar = 0, tOne = 0, single = null, trialCount = 0, t0 = 0;
 
   const start = () => {
@@ -192,7 +193,7 @@ function parallelStepper(c, p, mod) {
     Atomics.add(ctl, CTRL.JOB, 1);
     Atomics.notify(ctl, CTRL.JOB);
     // wait for the helpers to pick the job up; if they don't, step here alone
-    const until = Date.now() + 3000;
+    const until = Date.now() + HELPER_START_MS;
     while (Atomics.load(ctl, CTRL.READY) < T) {
       const seen = Atomics.load(ctl, CTRL.READY);
       if (Date.now() > until) { Atomics.store(ctl, CTRL.STOP, 1); Atomics.notify(ctl, CTRL.GEN); return false; }
@@ -248,7 +249,7 @@ function parallelStepper(c, p, mod) {
       for (;;) {
         const d = Atomics.load(ctl, CTRL.DONE);
         if (d >= T) break;
-        Atomics.wait(ctl, CTRL.DONE, d, 1000);
+        Atomics.wait(ctl, CTRL.DONE, d, HELPER_IDLE_MS);
       }
       const stride = 1 + weightsList.length;
       const sums = new Float64Array(buf(), at.sums, stride * 64);

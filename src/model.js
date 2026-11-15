@@ -3,6 +3,7 @@
 // Editor tree:  node = { streak, alts: [alt] }
 //               alt  = { name, p, pity, pityYields, softStart, softStep, count, children: node | null }
 // Paths are index strings: "" = the root node, "1,1,0" = third level.
+import { DEFAULT_EPS, DEFAULT_MAX_PULLS, DEFAULT_MAX_STATES } from "./engine/settings.js";
 
 import { getStrings } from "./i18n/index.js";
 
@@ -117,7 +118,7 @@ export function customTemplate() {
 // Which reference lines the chart draws (the "Lines" menu)
 export const DEFAULT_LINES = { target: true, mean: true, pcts: [50, 90], worst: true, custom: [] };
 
-export const DEFAULT_SETTINGS = { pct: "10, 25, 50, 75, 90, 95, 99", eps: "1e-13", maxPulls: 1000000, maxStates: 1000000, method: "auto", decimals: 2, noLimits: false };
+export const DEFAULT_SETTINGS = { pct: "10, 25, 50, 75, 90, 95, 99", eps: String(DEFAULT_EPS), maxPulls: DEFAULT_MAX_PULLS, maxStates: DEFAULT_MAX_STATES, method: "auto", decimals: 2, noLimits: false };
 
 export function freshState(key) {
   const p = key === "custom" ? customTemplate() : presets()[key];
@@ -324,10 +325,10 @@ export function buildQuery(state) {
   return {
     ...q,
     percentiles: pct.length ? pct : [50, 90],
-    eps: Math.max(0, num(settings.eps, 1e-13)),
+    eps: Math.max(0, num(settings.eps, DEFAULT_EPS)),
     // "No limits" lifts both safety limits; the calculation can then run as long as it needs
-    maxPulls: settings.noLimits ? Infinity : Math.max(1, num(settings.maxPulls, 1e6)),
-    maxStates: settings.noLimits ? Infinity : Math.max(1000, num(settings.maxStates, 1e6)),
+    maxPulls: settings.noLimits ? Infinity : Math.max(1, num(settings.maxPulls, DEFAULT_MAX_PULLS)),
+    maxStates: settings.noLimits ? Infinity : Math.max(1000, num(settings.maxStates, DEFAULT_MAX_STATES)),
     method: settings.method,
   };
 }

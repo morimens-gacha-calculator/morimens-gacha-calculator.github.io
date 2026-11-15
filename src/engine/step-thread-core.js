@@ -9,6 +9,7 @@
 // the job: offsets of the chain arrays, N, number of weight vectors and their offsets, and the
 // range [j0, j1) of each helper. Each helper computes its states in "pull" form, so threads
 // never write the same place; partial sums go to a shared Float64 area.
+import { HELPER_IDLE_MS } from "./settings.js";
 
 export const PULL_B64 = "AGFzbQEAAAABDAFgB39/f39/f38BfAIPAQNlbnYDbWVtAgMBgIAEAwIBAAcIAQRwdWxsAAAKpAEBoQECA38CfCAFIQcgACAFQQJ0aigCACEIAkADQCAHIAZPDQEgACAHQQFqQQJ0aigCACEJRAAAAAAAAAAAIQoCQANAIAggCU8NASAKIAMgASAIQQJ0aigCAEEDdGorAwAgAiAIQQN0aisDAKKgIQogCEEBaiEIDAALCyAEIAdBA3RqIAo5AwAgB0EARwRAIAsgCqAhCwsgB0EBaiEHDAALCyALCw==";
 export const CTRL = { JOB: 0, GEN: 1, DONE: 2, READY: 3, STOP: 4, RS: 5, SRC: 6, PROB: 7, A: 8, B: 9, N: 10, NW: 11, SUMS: 12, W0: 16, RANGE0: 32 };
@@ -52,7 +53,7 @@ function serve({ mem, ctrl, slot }) {
     Atomics.add(ctl, CTRL.READY, 1);
     Atomics.notify(ctl, CTRL.READY);
     for (;;) {
-      Atomics.wait(ctl, CTRL.GEN, gen, 1000);
+      Atomics.wait(ctl, CTRL.GEN, gen, HELPER_IDLE_MS);
       if (Atomics.load(ctl, CTRL.JOB) !== job || Atomics.load(ctl, CTRL.STOP)) break; // job over
       const g = Atomics.load(ctl, CTRL.GEN);
       if (g === gen) continue;

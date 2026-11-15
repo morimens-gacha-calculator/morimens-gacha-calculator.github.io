@@ -5,6 +5,7 @@
 //   Σ_m P(exactly m events by t)·f(m) = f(0) + Σ_{m≥1} P(τ_m ≤ t)·(f(m) − f(m−1))   (summation by parts)
 // and P(τ_m ≤ B) for every m from Parseval: Σ_t τ_m(t)·[t ≤ B] = (1/L) Σ_z Τ_m(z)·conj(I(z)).
 // The FFT length is longer than τ of the last event that matters, so nothing wraps around.
+import { EVENTS_GUESS_FACTOR, EVENTS_GUESS_MARGIN, EVENTS_GUESS_SD, MAX_FFT_LENGTH, NEGLIGIBLE } from "./settings.js";
 import { EngineError } from "./errors.js";
 
 export function fft(re, im, inverse) {
@@ -37,7 +38,7 @@ export function fftLength(gap1, gap, M, B) {
   const len = Math.max(B + 1, (gap1.length - 1) + Math.max(0, M - 1) * (gap.length - 1) + 1);
   let L = 2;
   while (L < len) L <<= 1;
-  if (L > 1 << 24) throw new EngineError("budgetTooLong", { limit: 1 << 24 }, "Too big: the budget spans too many pulls for the report.");
+  if (L > MAX_FFT_LENGTH) throw new EngineError("budgetTooLong", { limit: MAX_FFT_LENGTH }, "Too big: the budget spans too many pulls for the report.");
   return L;
 }
 
@@ -53,11 +54,11 @@ export function eventsBound(gap, B) {
   let mu = 0, m2 = 0;
   gap.forEach((p, t) => { mu += p * t; m2 += p * t * t; });
   const v = Math.max(0, m2 - mu * mu);
-  return Math.min(B + 1, Math.ceil(1.05 * B / mu + 12 * Math.sqrt(B * v / (mu * mu * mu) + 1) + 20));
+  return Math.min(B + 1, Math.ceil(EVENTS_GUESS_FACTOR * B / mu + EVENTS_GUESS_SD * Math.sqrt(B * v / (mu * mu * mu) + 1) + EVENTS_GUESS_MARGIN));
 }
 
 // P(τ_m ≤ B) for m = 1, 2, … by Parseval against the indicator of t ≤ B, over half the
-// frequencies (the rest mirror them). Stops at the first m below 1e-15 (mCount); asks for more
+// frequencies (the rest mirror them). Stops at the first m that is negligible (mCount); asks for more
 // events than the estimate if none is that small yet.
 export function eventsByPull(gap1, gap, B, tick = null) {
   for (let M = eventsBound(gap, B); ; M = Math.min(B + 1, M * 2)) {
@@ -80,7 +81,7 @@ export function eventsByPull(gap1, gap, B, tick = null) {
     const tauB = Float64Array.from(acc, (v, m) => (m === 0 ? 1 : Math.min(1, Math.max(0, v / L))));
     // first count that can't happen within B pulls; later values are rounding noise around 0
     let k = 1;
-    while (k <= M && tauB[k] >= 1e-15) k++;
+    while (k <= M && tauB[k] >= NEGLIGIBLE) k++;
     if (k <= M || M >= B + 1) {
       const mCount = Math.min(k, M);
       return { tauB: Float64Array.from({ length: mCount + 1 }, (_, m) => (m < k ? tauB[m] : 0)), mCount };

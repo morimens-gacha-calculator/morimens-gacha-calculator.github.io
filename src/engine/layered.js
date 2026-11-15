@@ -11,6 +11,7 @@
 //            SSR pity), the gaps between events are independent and identically distributed;
 //            the number of pulls is a sum of gaps, combined with an FFT (renewal.js).
 // The joint state space is never built, so goals needing billions of joint states are cheap.
+import { DEFAULT_MAX_STATES, EVENT_CELLS_PER_STATE, MAX_EVENTS, MAX_EVENT_CELLS, MAX_PULL_SPAN, NEGLIGIBLE, TINY_JOINT_CHAIN, eventTolerance, gapTolerance, poolTolerance } from "./settings.js";
 import { EngineError } from "./errors.js";
 import { cached } from "./cache.js";
 import { compile, firstHitPmf } from "./chain.js";
@@ -66,8 +67,8 @@ export function planLayered(tree, goal, opts, eps, force) {
       for (let e = 0; e < oc.col.length; e++) if (oc.lab[e]) entries.add(oc.col[e]);
       if (entries.size !== 1) return { ok: false }; // timing doesn't restart at each event
       const entry = [...entries][0];
-      const gap = firstHitPmf(oc, entry, eps / 100);
-      const gap1 = oc.startIndex === entry ? gap : firstHitPmf(oc, oc.startIndex, eps / 100);
+      const gap = firstHitPmf(oc, entry, gapTolerance(eps));
+      const gap1 = oc.startIndex === entry ? gap : firstHitPmf(oc, oc.startIndex, gapTolerance(eps));
       return { ok: true, states: oc.N - 1, gap, gap1 };
     });
     if (!timing.ok) return null;
@@ -82,9 +83,9 @@ export function planLayered(tree, goal, opts, eps, force) {
 
   // Auto: a tiny joint chain is just as fast and also gives the exact worst case
   const jointEst = (timing ? timing.states : 1) * (ic.N - 1) * pools.reduce((m, x) => m * x.est, 1);
-  if (!force && jointEst < 3000) return { small: true };
+  if (!force && jointEst < TINY_JOINT_CHAIN) return { small: true };
 
-  const tol = eps / 1000;
+  const tol = poolTolerance(eps);
   const items = pools.map((x, i) => {
     opts.onPlan?.({ done: i, total: pools.length });
     // the last value is below the cut-off: treat it as 0 so capped hit counts count as done
@@ -115,7 +116,7 @@ export function planLayered(tree, goal, opts, eps, force) {
 export function walkEvents(plan, caps, visit) {
   const { ic } = plan;
   const K = caps.length;
-  const limit = Math.min(10 * (plan.maxStates ?? 1e6), 4e7);
+  const limit = Math.min(EVENT_CELLS_PER_STATE * (plan.maxStates ?? DEFAULT_MAX_STATES), MAX_EVENT_CELLS);
   let maxDeg = 1;
   for (let x = 1; x < ic.N; x++) maxDeg = Math.max(maxDeg, ic.rowStart[x + 1] - ic.rowStart[x]);
   const cells = (cap) => ({ n: 0, cap, x: new Int32Array(cap), h: new Int32Array(cap * K), p: new Float64Array(cap) });
@@ -199,8 +200,8 @@ export function solveLayered(plan, eps, maxPulls, onProgress) {
     }
     U.push(Math.min(1, u));
     if (onProgress && (m & 15) === 0) onProgress({ phase: "events", t: m, remaining: u, eps, name: plan.eventName });
-    if (m >= 1e6) throw new EngineError("tooManyEvents", { limit: 1e6 }, "Too big: the goal needs more than a million events.");
-    return u > eps / 10;
+    if (m >= MAX_EVENTS) throw new EngineError("tooManyEvents", { limit: MAX_EVENTS }, "Too big: the goal needs more than a million events.");
+    return u > eventTolerance(eps);
   });
   const pM = U.map((u, m) => Math.max(0, (m ? U[m - 1] : 1) - u));
 
@@ -210,7 +211,7 @@ export function solveLayered(plan, eps, maxPulls, onProgress) {
   else {
     const Mmax = pM.length - 1;
     const len = (gap1.length - 1) + Math.max(0, Mmax - 1) * (gap.length - 1) + 1;
-    if (len > maxPulls + 1 && len > 1 << 23) throw new EngineError("tooManyPulls", { limit: 1 << 23 }, "Too big: the result would span too many pulls.");
+    if (len > maxPulls + 1 && len > MAX_PULL_SPAN) throw new EngineError("tooManyPulls", { limit: MAX_PULL_SPAN }, "Too big: the result would span too many pulls.");
     let L = 1;
     while (L < len) L <<= 1;
     const gr = new Float64Array(L), gi = new Float64Array(L), hr = new Float64Array(L), hi = new Float64Array(L);
@@ -245,7 +246,7 @@ export function solveLayered(plan, eps, maxPulls, onProgress) {
     acc += pmfT[t];
     pmf.push(pmfT[t]);
     const sv = Math.max(0, 1 - acc);
-    survival.push(sv < 1e-15 ? 0 : sv);
+    survival.push(sv < NEGLIGIBLE ? 0 : sv);
     if (sv < eps) break;
   }
   return {
@@ -264,7 +265,7 @@ export function budgetLayered(plan, B, onProgress = null) {
   report(0);
 
   // How many events (SSRs) can happen within B pulls: P(m-th event by pull B) for each m
-  // (tauB[m]), up to the first m where it's below 1e-15. "mCount or more" counts as mCount.
+  // (tauB[m]), up to the first m where it's negligible. "mCount or more" counts as mCount.
   const ev = gap ? eventsByPull(gap1, gap, B, (f) => report(0.15 * f)) : null;
   const mCount = gap ? ev.mCount : B + 1;
   report(0.15);

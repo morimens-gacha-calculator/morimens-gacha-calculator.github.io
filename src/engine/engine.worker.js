@@ -6,6 +6,7 @@
 // To cancel, the page terminates the worker (and with it its helper threads).
 // threads: false in a message keeps that calculation on one core (comparisons run several
 // workers side by side instead).
+import { PERCENTILE_SLACK } from "./settings.js";
 import { solve, budgetOnly } from "./banner-engine.js";
 import { setThreadPool, createPoolMemory } from "./chain-step.js";
 
@@ -63,7 +64,7 @@ self.onmessage = async ({ data }) => {
       const q = Math.min(1, Math.max(0, desired / 100));
       let pulls = null;
       if (q >= 1) pulls = result.max; // 100% only exists with a hard guarantee
-      else for (let t = 0; t < result.cdf.length; t++) if (result.cdf[t] >= q - 1e-12) { pulls = t; break; }
+      else for (let t = 0; t < result.cdf.length; t++) if (result.cdf[t] >= q - PERCENTILE_SLACK) { pulls = t; break; }
       result.requiredPulls = pulls;
       result.budget = pulls == null ? null : budgetOnly({ ...query, budget: pulls, onProgress });
     }

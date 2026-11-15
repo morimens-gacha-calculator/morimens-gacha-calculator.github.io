@@ -228,4 +228,4 @@ export function mergeNamedRows(tree, goal, goalMode) {
   return add.length ? [...list.filter((_, i) => !drop.has(i)), ...add] : list;
 }
 
-export const MAX_GROUPS = 7; // transition labels have 3 bits
+export { MAX_GROUPS } from "./settings.js"; // (kept here for existing imports)

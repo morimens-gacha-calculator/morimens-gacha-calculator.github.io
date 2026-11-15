@@ -43,6 +43,7 @@
 //   streak: { "1,1": [0, 2] },      node path → [last alternative index, run length]
 //   owned:  { "1,1,0": [2, 0, 1],   per-item copies of a pool, in item order
 //             "1,0": 3 } }          or a total; paths must not be nested in each other
+import { DEFAULT_EPS, DEFAULT_MAX_PULLS, DEFAULT_MAX_STATES, PERCENTILE_SLACK } from "./settings.js";
 import { EngineError } from "./errors.js";
 
 import { cached, now } from "./cache.js";
@@ -106,9 +107,9 @@ export function solve({
   percentiles = DEFAULT_PERCENTILES,
   chanceAt = [],      // pull counts → P(goal met within that many pulls)
   budget = null,      // pull count → full "what will I get" report
-  eps = 1e-13,        // stop once P(not done yet) < eps (0 = run to the guaranteed end)
-  maxPulls = 1e6,
-  maxStates = 1e6,    // refuse calculations bigger than this (protects the browser tab)
+  eps = DEFAULT_EPS,  // stop once P(not done yet) < eps (0 = run to the guaranteed end)
+  maxPulls = DEFAULT_MAX_PULLS,
+  maxStates = DEFAULT_MAX_STATES, // refuse calculations bigger than this (protects the browser tab)
   method = "auto",    // "auto" | "joint" | "split" | "layered" (see choosePlan)
   onProgress = null,  // optional callback, see progressSteps
   budgetAfter = false, // a budgetOnly call follows (counted in the progress steps)
@@ -133,7 +134,7 @@ export function solve({
   for (let i = 0; i < t; i++) { mean += survival[i]; m2 += (2 * i + 1) * survival[i]; }
   const cdf = Float64Array.from(survival, (sv) => 1 - sv);
   const quantile = (q) => {
-    for (let i = 0; i < cdf.length; i++) if (cdf[i] >= q - 1e-12) return i;
+    for (let i = 0; i < cdf.length; i++) if (cdf[i] >= q - PERCENTILE_SLACK) return i;
     return null;
   };
   const pct = {};
@@ -167,7 +168,7 @@ export function solve({
 }
 
 // Budget report only ("what will I get with B pulls"), without the pulls-to-goal part.
-export function budgetOnly({ tree, goal, goalMode = "all", start = {}, budget, eps = 1e-13, maxStates = 1e6, method = "auto", onProgress = null }) {
+export function budgetOnly({ tree, goal, goalMode = "all", start = {}, budget, eps = DEFAULT_EPS, maxStates = DEFAULT_MAX_STATES, method = "auto", onProgress = null }) {
   const { layered, split, opts, tree: exTree, goal: exGoal, orig } = choosePlan({ tree, goal, goalMode, start, eps, maxStates, method, onProgress });
   // numbered as the last step after solve({ budgetAfter: true }) with the same goal
   const prog = progressSteps(onProgress, layered ? "layered" : split ? "split" : "joint", true);
