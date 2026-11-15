@@ -117,7 +117,7 @@ export function customTemplate() {
 // Which reference lines the chart draws (the "Lines" menu)
 export const DEFAULT_LINES = { target: true, mean: true, pcts: [50, 90], worst: true, custom: [] };
 
-export const DEFAULT_SETTINGS = { pct: "10, 25, 50, 75, 90, 95, 99", eps: "1e-13", maxPulls: 1000000, maxStates: 1000000, method: "auto" };
+export const DEFAULT_SETTINGS = { pct: "10, 25, 50, 75, 90, 95, 99", eps: "1e-13", maxPulls: 1000000, maxStates: 1000000, method: "auto", decimals: 2 };
 
 export function freshState(key) {
   const p = key === "custom" ? customTemplate() : presets()[key];
@@ -310,15 +310,24 @@ export function buildQuery(state) {
 
 // ── Formatting ──
 const loc = () => getStrings().numberLocale;
-export function fmtPct(p) {
+
+// Decimal places for chances and averages (the "Decimal places" setting). Pull counts are whole.
+let precision = 2;
+export const setPrecision = (d) => { precision = Math.min(6, Math.max(0, Math.floor(num(d, 2)))); };
+export const getPrecision = () => precision;
+const fixed = (x, d) => x.toLocaleString(loc(), { minimumFractionDigits: d, maximumFractionDigits: d });
+
+// 0.7660 → "76.60%". A chance that would round to 0 or 100 but isn't exactly that shows as
+// "<0.01%" / ">99.99%", so a near-certainty is never presented as a certainty.
+export function fmtPct(p, d = precision) {
   if (!Number.isFinite(p)) return "–";
   if (p >= 1) return "100%";
-  if (p > 0.9999) return ">99.99%";
   if (p <= 0) return "0%";
-  if (p < 0.0001) return "<0.01%";
-  const v = p * 100;
-  const d = v >= 10 ? 1 : v >= 1 ? 2 : 3;
-  return Number(v.toFixed(d)).toLocaleString(loc(), { maximumFractionDigits: d }) + "%";
+  const v = p * 100, step = 10 ** -d;
+  const rounded = Math.round(v / step) * step;
+  if (rounded <= 0) return `<${fixed(step, d)}%`;
+  if (rounded >= 100) return `>${fixed(100 - step, d)}%`;
+  return `${fixed(rounded, d)}%`;
 }
 export const fmtInt = (x) => (x == null ? "–" : Math.round(x).toLocaleString(loc()));
-export const fmtNum = (x, d = 1) => (x == null ? "–" : x.toLocaleString(loc(), { minimumFractionDigits: d, maximumFractionDigits: d }));
+export const fmtNum = (x, d = precision) => (x == null ? "–" : fixed(x, d));

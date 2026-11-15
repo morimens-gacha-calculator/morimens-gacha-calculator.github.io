@@ -48,7 +48,8 @@ export function useEngine(state, runToken, lang) {
 
   // Only what changes the numbers triggers a new calculation (not chart lines, view, etc.)
   const { banner, goal, goalMode, start, settings, mode, budget, desired } = state;
-  const calcKey = JSON.stringify({ banner, goal, goalMode, start, settings, mode, budget, desired });
+  const { decimals, ...calcSettings } = settings; // eslint-disable-line no-unused-vars -- display only
+  const calcKey = JSON.stringify({ banner, goal, goalMode, start, settings: calcSettings, mode, budget, desired });
 
   useEffect(() => {
     let query;

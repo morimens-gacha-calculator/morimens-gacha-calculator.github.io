@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Chart as ChartJS, LinearScale, PointElement, LineElement, Filler, Tooltip, Legend } from "chart.js";
 import { Line } from "react-chartjs-2";
-import { fmtInt, fmtNum, fmtPct, listOfInts, DEFAULT_LINES } from "../model.js";
+import { fmtInt, fmtNum, fmtPct, listOfInts, DEFAULT_LINES, getPrecision } from "../model.js";
 import { useT } from "../i18n/index.js";
 import NumberInput from "./NumberInput.jsx";
 import Progress from "./Progress.jsx";
@@ -93,7 +93,7 @@ export default function ResultChart({ state, update, engine, theme }) {
 
     // The lines the person picked
     const markers = [];
-    if (lines.mean) markers.push({ x: r.mean, label: L.average(fmtNum(r.mean, 0)), color: C.guide });
+    if (lines.mean) markers.push({ x: r.mean, label: L.average(fmtNum(r.mean)), color: C.guide });
     for (const p of lines.pcts) {
       const x = quantile(p / 100);
       if (x != null) markers.push({ x, label: p === 50 ? L.median(fmtInt(x)) : L.pctAt(p, fmtInt(x)), color: C.guide });
@@ -102,7 +102,7 @@ export default function ResultChart({ state, update, engine, theme }) {
     for (const c of lines.custom) markers.push({ x: c, label: L.atPull(fmtInt(c), fmtPct(chanceAt(c))), color: C.guide });
     if (lines.target && target != null) {
       markers.push({ x: target, strong: true, color: C.marker,
-        label: state.mode === "budget" ? L.yourBudget(fmtInt(target), fmtPct(chanceAt(target))) : L.forDesired(fmtInt(target), fmtNum(state.desired, 0)) });
+        label: state.mode === "budget" ? L.yourBudget(fmtInt(target), fmtPct(chanceAt(target))) : L.forDesired(fmtInt(target), fmtNum(state.desired, Number.isInteger(state.desired) ? 0 : getPrecision())) });
     }
     for (const m of markers) m.bg = bg;
 
@@ -111,8 +111,8 @@ export default function ResultChart({ state, update, engine, theme }) {
       return {
         C, xMax: b.pulls, yMax: undefined, legend: true,
         markers: markers.filter((m) => m.x <= b.pulls && (m.strong || lines.custom.includes(m.x))),
-        yFmt: (v) => fmtNum(v, v % 1 ? 1 : 0),
-        tip: (c) => `${c.dataset.label}: ${fmtNum(c.parsed.y, 2)}`,
+        yFmt: (v) => fmtNum(v, Number.isInteger(v) ? 0 : 1),
+        tip: (c) => `${c.dataset.label}: ${fmtNum(c.parsed.y)}`,
         data: {
           datasets: reqs.map((q, i) => ({
             label: `${q.label} (${q.type !== "distinct" ? T.units.copies : T.units.itemsWith(q.copies)})`,
@@ -124,7 +124,7 @@ export default function ResultChart({ state, update, engine, theme }) {
     const values = active === "pmf" ? r.pmf : r.cdf;
     return {
       C, xMax, yMax: active === "pmf" ? undefined : 1, legend: false, markers,
-      yFmt: (v) => (active === "pmf" ? fmtPct(v) : `${Math.round(v * 100)}%`),
+      yFmt: (v) => (active === "pmf" ? fmtPct(v, Math.max(1, getPrecision())) : `${Math.round(v * 100)}%`),
       tip: (c) => `${c.dataset.label}: ${fmtPct(c.parsed.y)}`,
       data: {
         datasets: [{
@@ -134,7 +134,7 @@ export default function ResultChart({ state, update, engine, theme }) {
       },
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [r, b, active, target, state.mode, state.desired, state.chartLines, theme, T]);
+  }, [r, b, active, target, state.mode, state.desired, state.chartLines, state.settings.decimals, theme, T]);
 
   const setLines = (patch) => update((s) => ({ ...s, chartLines: { ...DEFAULT_LINES, ...s.chartLines, ...patch } }));
 

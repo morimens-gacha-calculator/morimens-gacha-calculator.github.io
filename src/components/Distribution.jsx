@@ -27,7 +27,7 @@ export default function Distribution({ state, engine }) {
             <div className="dist-card" key={i}>
               <div className="dist-head">
                 <b>{q.label}</b>
-                <span className="muted small">{L.expected(fmtNum(q.mean, 2), fmtPct(q.chanceMet))}</span>
+                <span className="muted small">{L.expected(fmtNum(q.mean), fmtPct(q.chanceMet))}</span>
               </div>
               <table className="probability-table">
                 <thead><tr><th className="const-col">{q.type !== "distinct" ? L.copies : L.itemsDone}</th><th>{L.probability}</th></tr></thead>

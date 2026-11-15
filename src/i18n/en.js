@@ -132,6 +132,8 @@ export default {
   },
 
   settings: {
+    decimals: "Decimal places",
+    decimalsHint: "For chances and averages. Pull counts are always whole numbers.",
     percentiles: "Percentiles to show",
     eps: "Ignore the tail below",
     epsHint: "The worst case is calculated exactly either way; this only limits how far the curves go.",

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { freshState, newId, presets, reqLabel, withPresetNames } from "./model.js";
+import { freshState, newId, presets, reqLabel, withPresetNames, setPrecision } from "./model.js";
 import { useEngine } from "./useEngine.js";
 import { useCompare } from "./useCompare.js";
 import { I18nContext, LOCALES, browserLocale, setLocale } from "./i18n/index.js";
@@ -69,6 +69,7 @@ export default function App() {
   const [view, setView] = useState("single");
   const [detail, setDetail] = useState("dist");
   const [note, setNote] = useState("");
+  setPrecision(state.settings.decimals ?? 2); // before any child formats a number
   const engine = useEngine(state, runToken, lang);
   const compareResults = useCompare(compare.items, lang);
   const P = presets();

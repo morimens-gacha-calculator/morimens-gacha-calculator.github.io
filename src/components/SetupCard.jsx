@@ -141,6 +141,11 @@ function SettingsPanel({ state, update }) {
   return (
     <div className="form-grid">
       <label className="field">
+        <span className="field-label">{L.decimals}</span>
+        <NumberInput className="custom-input" min={0} max={6} fallback={2} value={s.decimals ?? 2} onChange={(v) => set("decimals", v)} />
+        <span className="muted small">{L.decimalsHint}</span>
+      </label>
+      <label className="field">
         <span className="field-label">{L.percentiles}</span>
         <input type="text" className="custom-input" value={s.pct} onChange={(e) => set("pct", e.target.value)} />
       </label>
