@@ -19,7 +19,7 @@ export const BACKGROUND = {
 // ── Footer ──
 export const SITE_NAME = "morimens-gacha-calculator.github.io";
 export const BANNERS_PATCH = "2.6.5"; // game version the built-in banners match; update with new patches
-export const SOURCE_URL = "https://github.com/your-name/your-repo"; // "Source code" link in the footer; null hides it
+export const SOURCE_URL = "https://github.com/morimens-gacha-calculator/morimens-gacha-calculator.github.io"; // "Source code" link in the footer; null hides it
 
 // ── Defaults ──
 export const DEFAULT_THEME = "dark";     // "dark" or "light"
