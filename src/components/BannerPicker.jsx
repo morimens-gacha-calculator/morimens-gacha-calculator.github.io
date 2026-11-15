@@ -3,23 +3,30 @@ import { presets } from "../model.js";
 import { useT } from "../i18n/index.js";
 
 // Banner dropdown with Reset and Share. Reset (and opening a shared link) can be undone right
-// after, instead of asking first. Share copies a link to this setup.
+// after, instead of asking first. Share gives a one-line summary and a link to this setup.
 export default function BannerPicker({ current, onPick, hint, onReset, canUndo, undoKind, onUndo, onShare, linkError }) {
   const T = useT();
   const P = presets();
-  const [shareMsg, setShareMsg] = useState(null); // { kind: "copied" } | { kind: "manual", url }
+  const [shareMsg, setShareMsg] = useState(null); // { kind: "copied" } | { kind: "manual", text }
   useEffect(() => {
     if (shareMsg?.kind !== "copied") return undefined;
     const t = setTimeout(() => setShareMsg(null), 4000);
     return () => clearTimeout(t);
   }, [shareMsg]);
+  // Share: on phones the system share sheet (summary + link); elsewhere both copied as text
   const share = async () => {
-    const url = await onShare();
+    const { url, summary } = await onShare();
+    const text = `${summary}\n${url}`;
+    const phone = typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches;
+    if (phone && navigator.share) {
+      try { await navigator.share({ title: summary, text: summary, url }); return; }
+      catch (e) { if (e?.name === "AbortError") return; } // closed by the user
+    }
     try {
-      await navigator.clipboard.writeText(url);
+      await navigator.clipboard.writeText(text);
       setShareMsg({ kind: "copied" });
     } catch {
-      setShareMsg({ kind: "manual", url }); // no clipboard access: show it to copy by hand
+      setShareMsg({ kind: "manual", text }); // no clipboard access: show it to copy by hand
     }
   };
   let line;
@@ -27,7 +34,7 @@ export default function BannerPicker({ current, onPick, hint, onReset, canUndo, 
   else if (shareMsg?.kind === "manual") line = (
     <p className="subtitle share-manual" role="status">
       {T.app.copyLink}{" "}
-      <input className="custom-input share-url" readOnly value={shareMsg.url} onFocus={(e) => e.target.select()} aria-label={T.app.copyLink} />
+      <textarea className="custom-input share-url" readOnly rows={2} value={shareMsg.text} onFocus={(e) => e.target.select()} aria-label={T.app.copyLink} />
       <button type="button" className="btn btn--link" onClick={() => setShareMsg(null)}>{T.app.close}</button>
     </p>
   );

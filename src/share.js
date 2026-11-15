@@ -3,7 +3,7 @@
 // built-in banner is stored by its key only (short links; names in the reader's language); an
 // edited or custom banner is stored in full. Display preferences (theme, decimals, chart lines)
 // are not shared.
-import { DEFAULT_SETTINGS, freshState, newId, presets } from "./model.js";
+import { DEFAULT_SETTINGS, fmtInt, fmtNum, fmtPct, freshState, newId, presets, reqLabel } from "./model.js";
 
 const VERSION = 1;
 const CALC_SETTINGS = ["method", "eps", "maxPulls", "maxStates", "noLimits", "pct"];
@@ -74,6 +74,20 @@ export async function decodeSetup(code) {
     desired: Number.isFinite(p.d) ? p.d : base.desired,
     settings: { ...base.settings, ...(p.st ?? {}) },
   };
+}
+
+// One line saying what the link shows, for the message it's pasted into (chat previews can't
+// read the setup: it sits after "#", which never reaches a server)
+export function shareSummary(state, result, T) {
+  const title = presets()[state.preset]?.title ?? T.app.customBanner;
+  const goals = state.goal.map((g) => reqLabel(state.banner, g)).join(state.goalMode === "all" ? T.goalLabel.joinAll : T.goalLabel.joinAny);
+  let line = `${title} · ${goals}`;
+  if (result) {
+    if (state.mode === "budget" && result.budget) line += T.app.shareBudget(fmtPct(result.budget.chanceGoal), fmtInt(state.budget), fmtNum(result.mean));
+    else if (result.requiredPulls != null) line += T.app.sharePulls(state.desired, fmtInt(result.requiredPulls), fmtNum(result.mean));
+    else line += T.app.shareAverage(fmtNum(result.mean));
+  }
+  return line;
 }
 
 export const linkCode = (hash) => (hash.startsWith("#s=") ? hash.slice(3) : null);

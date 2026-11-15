@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { freshState, newId, presets, reqLabel, withPresetNames, setPrecision, DEFAULT_SETTINGS } from "./model.js";
 import { useEngine } from "./useEngine.js";
-import { decodeSetup, linkCode, makeShareLink } from "./share.js";
+import { decodeSetup, linkCode, makeShareLink, shareSummary } from "./share.js";
 import { useCompare } from "./useCompare.js";
 import { I18nContext, LOCALES, browserLocale, setLocale } from "./i18n/index.js";
 import { BACKGROUND, DEFAULT_THEME, DEFAULT_PRESET, SITE_NAME, BANNERS_PATCH, SOURCE_URL } from "./site.config.js";
@@ -58,10 +58,10 @@ export default function App() {
   const [state, setState] = useState(() => {
     const s = load(STORE_KEY, (v) => v && v.banner && Array.isArray(v.goal));
     if (!s) return freshState(DEFAULT_PRESET);
-    // settings saved by an older version: fill in new ones; the old default state limit (1 million,
-    // before chain building got leaner) moves up to the current default
+    // settings saved by an older version: fill in new ones; the state limit that was briefly the
+    // default (2 million) goes back to the current default
     const settings = { ...DEFAULT_SETTINGS, ...s.settings };
-    if (Number(s.settings?.maxStates) === 1e6) settings.maxStates = DEFAULT_SETTINGS.maxStates;
+    if (Number(s.settings?.maxStates) === 2e6) settings.maxStates = DEFAULT_SETTINGS.maxStates;
     const restored = { ...s, settings };
     // a preset that no longer exists becomes your custom banner; presets get names in this language
     return presets()[s.preset] ? withPresetNames(restored) : { ...restored, preset: "custom" };
@@ -178,7 +178,8 @@ export default function App() {
 
             <BannerPicker current={state.preset} hint={P[state.preset]?.hint ?? T.app.customHint} onPick={pickBanner}
               onReset={resetBanner} canUndo={!!undoState} undoKind={undoKind} onUndo={undoReset}
-              onShare={() => makeShareLink(state)} linkError={linkError} />
+              onShare={async () => ({ url: await makeShareLink(state), summary: shareSummary(state, engine.status === "busy" ? null : engine.result, T) })}
+              linkError={linkError} />
 
             <div className="workspace">
               <div className="inputs-col">

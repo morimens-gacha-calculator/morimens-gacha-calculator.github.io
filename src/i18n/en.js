@@ -13,7 +13,7 @@ export default {
   numberLocale: "en-US",         // used to format numbers: 1,234.5
 
   app: {
-    title: "Banner Pull Calculator",
+    title: "Morimens Gacha Calculator",
     customHint: "Your own banner. Change its rules in the Banner rules tab; it is remembered separately from the presets.",
     lightTheme: "Light theme",
     darkTheme: "Dark theme",
@@ -34,8 +34,11 @@ export default {
     resetDone: "Banner reset to its defaults.",
     undo: "Undo",
     share: "Share",
-    shareTitle: "Copy a link to this setup (banner, pity, plan and settings)",
-    linkCopied: "Link copied. Anyone who opens it gets this setup.",
+    shareTitle: "Copy a summary and a link to this setup (banner, pity, plan and settings)",
+    linkCopied: "Copied a summary and the link. Anyone who opens it gets this setup.",
+    shareBudget: (pct, pulls, avg) => ` — ${pct} with ${pulls} pulls (average ${avg})`,
+    sharePulls: (pct, pulls, avg) => ` — ${pct}% chance by ${pulls} pulls (average ${avg})`,
+    shareAverage: (avg) => ` — average ${avg} pulls`,
     copyLink: "Copy this link:",
     close: "Close",
     sharedLoaded: "Loaded a shared setup.",

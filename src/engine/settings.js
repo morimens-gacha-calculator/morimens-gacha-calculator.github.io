@@ -33,13 +33,13 @@ export const LUMPING_TOLERANCE = 1e-12;
 
 // ── Limits (protect the browser tab) ────────────────────────────────────────────────────────
 // The first two are the defaults of the Settings tab; "No limits" lifts them.
-// Chain states: building one peaks at about 0.5–0.6 KB (115 bytes kept), so 2 million states
-// need about the 1.1–1.2 GB that 1 million did before chain building was made leaner.
-export const DEFAULT_MAX_STATES = 2e6;
+// Chain states: building one peaks at about 0.5–0.6 KB (115 bytes kept), so 1 million states
+// need about 0.5–0.6 GB.
+export const DEFAULT_MAX_STATES = 1e6;
 export const DEFAULT_MAX_PULLS = 1e6;
 // Event-layer cells (about 40–50 bytes each): allowed per max state (10 million at the default),
 // and never more than this in total.
-export const EVENT_CELLS_PER_STATE = 5;
+export const EVENT_CELLS_PER_STATE = 10;
 export const MAX_EVENT_CELLS = 4e7;
 export const MAX_EVENTS = 1e6;               // events (SSRs) a goal may need
 export const MAX_PULL_SPAN = 1 << 23;        // pulls the layered result may span (FFT length)

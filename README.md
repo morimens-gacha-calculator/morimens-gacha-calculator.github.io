@@ -1,4 +1,4 @@
-# Banner Pull Calculator
+# Morimens Gacha Calculator
 
 Exact pull statistics for gacha banners with pity, soft pity, guarantees, memory
 rules and item pools. Everything runs in the browser (no backend), so it can be
