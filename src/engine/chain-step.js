@@ -14,6 +14,7 @@
 //
 // Source of the kernel: chain-step.wat (compiled with wabt; base64 below).
 import { pullKernel, CTRL, CTRL_WORDS, MAX_WEIGHTS } from "./step-thread-core.js";
+import { internalError } from "./errors.js";
 
 const KERNEL_B64 = "AGFzbQEAAAABEgJgBn9/f39/fwF8YAN/f38BfAMDAgABBQMBAAEHFAMDbWVtAgAEc3RlcAAAA2RvdAABCskCAocCBQN/AXwBfwF8AX8gBCEKIAQgBUEDdGohDAJAA0AgCiAMTw0BIApEAAAAAAAAAAA5AwAgCkEIaiEKDAALC0EBIQYCQANAIAYgBU8NASADIAZBA3RqKwMAIQkgCUQAAAAAAAAAAGIEQCAAIAZBAnRqKAIAIQcgACAGQQFqQQJ0aigCACEIAkADQCAHIAhPDQEgBCABIAdBAnRqKAIAQQN0aiEKIAogCisDACAJIAIgB0EDdGorAwCioDkDACAHQQFqIQcMAAsLCyAGQQFqIQYMAAsLRAAAAAAAAAAAIQsgBEEIaiEKAkADQCAKIAxPDQEgCyAKKwMAoCELIApBCGohCgwACwsgCws+AgF/AXxBASEDAkADQCADIAJPDQEgBCAAIANBA3RqKwMAIAEgA0EDdGorAwCioCEEIANBAWohAwwACwsgBAs=";
 
@@ -268,8 +269,8 @@ function parallelStepper(c, p, mod) {
       return sink;
     },
     weights(w) {
-      if (started) throw new Error("weights() must come before the first step()");
-      if (weightsList.length >= MAX_WEIGHTS) throw new Error("too many weight vectors");
+      if (started) throw internalError("weights() must come before the first step()");
+      if (weightsList.length >= MAX_WEIGHTS) throw internalError("too many weight vectors");
       const wat = alloc(8 * N);
       ensure();
       new Float64Array(buf(), wat, N).set(w);

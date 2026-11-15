@@ -1,5 +1,6 @@
 // The finite Markov chain of a banner (and goal): building it, merging states that behave
 // alike, the exact worst case, and small helpers for stepping it.
+import { EngineError, internalError } from "./errors.js";
 import { parseGoal } from "./goal.js";
 import { findAlt, findNode, isPrefix, leavesUnder, normaliseNode, resolvePath } from "./tree.js";
 
@@ -31,11 +32,11 @@ export function compile(treeRaw, goalRaw, { start: startRaw = {}, goalMode = "al
     absorb = false;
     trackHits.forEach((spec, g) => {
       const a = findAlt(root, resolvePath(root, spec));
-      if (!a) throw new Error(`trackHits: no alternative "${spec}"`);
+      if (!a) throw internalError(`trackHits: no alternative "${spec}"`);
       a.hitLabel = g + 1;
     });
   }
-  if (goalMode !== "all" && goalMode !== "any") throw new Error(`goalMode must be "all" or "any"`);
+  if (goalMode !== "all" && goalMode !== "any") throw internalError(`goalMode must be "all" or "any"`);
 
   // Per-item tracking for pools used by "specific" / "distinct" requirements.
   // Every item a "specific" requirement names gets its own counter; the other items
@@ -89,33 +90,33 @@ export function compile(treeRaw, goalRaw, { start: startRaw = {}, goalMode = "al
   for (const g of tracked) if (g.h.length) start[g.h[0]] = g.m;
   for (const [spec, val] of Object.entries(startRaw.pity ?? {})) {
     const a = findAlt(root, resolvePath(root, spec));
-    if (!a) throw new Error(`start.pity: no alternative "${spec}"`);
+    if (!a) throw internalError(`start.pity: no alternative "${spec}"`);
     if (a.cv >= 0) start[a.cv] = Math.min(Math.max(0, val | 0), a.cap);
   }
   for (const [spec, [last, run]] of Object.entries(startRaw.streak ?? {})) {
     const node = findNode(root, resolvePath(root, spec));
-    if (!node || !node.streak) throw new Error(`start.streak: no streak node "${spec}"`);
+    if (!node || !node.streak) throw internalError(`start.streak: no streak node "${spec}"`);
     const r = Math.min(Math.max(0, run | 0), node.streak);
     start[node.sv] = r === 0 ? 0 : (last + 1) * (node.streak + 1) + r;
   }
   const ownedPaths = Object.keys(startRaw.owned ?? {}).map((k) => [k, resolvePath(root, k)]);
   for (const [k1, p1] of ownedPaths)
     for (const [k2, p2] of ownedPaths)
-      if (k1 !== k2 && isPrefix(p1, p2)) throw new Error(`start.owned: "${k2}" is inside "${k1}"`);
+      if (k1 !== k2 && isPrefix(p1, p2)) throw internalError(`start.owned: "${k2}" is inside "${k1}"`);
   for (const [spec, path] of ownedPaths) {
     const val = startRaw.owned[spec];
     const alt = path.length ? findAlt(root, path) : null;
-    if (path.length && !alt) throw new Error(`start.owned: no alternative "${spec}"`);
+    if (path.length && !alt) throw internalError(`start.owned: no alternative "${spec}"`);
     let items = null, total;
     if (Array.isArray(val)) {
-      if (!alt || alt.child) throw new Error(`start.owned: per-item counts need a single item or pool, not "${spec}"`);
-      if (val.length > alt.count) throw new Error(`start.owned: "${spec}" has only ${alt.count} items`);
+      if (!alt || alt.child) throw internalError(`start.owned: per-item counts need a single item or pool, not "${spec}"`);
+      if (val.length > alt.count) throw internalError(`start.owned: "${spec}" has only ${alt.count} items`);
       items = val.map((x) => Math.max(0, x | 0));
       total = items.reduce((a, b) => a + b, 0);
     } else {
       total = Math.max(0, val | 0);
       if (alt && !alt.child && alt.icap) {
-        if (alt.count > 1) throw new Error(`start.owned: give per-item counts for pool "${spec}" as an array`);
+        if (alt.count > 1) throw internalError(`start.owned: give per-item counts for pool "${spec}" as an array`);
         items = [total];
       }
     }
@@ -251,7 +252,7 @@ export function compile(treeRaw, goalRaw, { start: startRaw = {}, goalMode = "al
         j = index.get(key);
         if (j === undefined) {
           j = states.length; index.set(key, j); states.push(t);
-          if (j > maxStates) throw new Error(`Too big: over ${maxStates} states. Try fewer copies, fewer tracked items, or a higher maxStates.`);
+          if (j > maxStates) throw new EngineError("tooBigStates", { limit: maxStates }, `Too big: over ${maxStates} states. Try fewer copies, fewer tracked items, or a higher maxStates.`);
         }
       }
       const key = j * 8 + lab; // target and label in one key
@@ -260,7 +261,7 @@ export function compile(treeRaw, goalRaw, { start: startRaw = {}, goalMode = "al
     rows.push(merged);
   }
   if (absorb && states.length > 1 && !rows.some((r, k) => k > 0 && r.has(0)))
-    throw new Error("The goal can't be reached with this banner");
+    throw new EngineError("unreachable", {}, "The goal can't be reached with this banner");
 
   // Exact reduction: drop pity/streak variables that can't change the result
   const candidates = [];

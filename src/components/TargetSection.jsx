@@ -1,5 +1,5 @@
 import { HelpButton } from "./Help.jsx";
-import { useT } from "../i18n/index.js";
+import { useT, errorText } from "../i18n/index.js";
 import NumberInput from "./NumberInput.jsx";
 import { fmtInt, fmtPct } from "../model.js";
 
@@ -53,7 +53,7 @@ export default function TargetSection({ state, update, engine }) {
           </output>
         </div>
       </div>
-      {engine.status === "error" && <p className="error-box" role="alert">{engine.error}</p>}
+      {engine.status === "error" && <p className="error-box" role="alert">{errorText(T, engine)}</p>}
       {engine.status === "cancelled" && <p className="note-box" role="status">{T.progress.cancelled}</p>}
     </section>
   );

@@ -32,7 +32,7 @@ export function useCompare(items, lang) { // eslint-disable-line no-unused-vars
       setResults((r) => ({ ...r, [it.id]: { ...r[it.id], key, status: "busy" } }));
       worker.onmessage = ({ data }) => {
         if (cancelled || data.progress) return;
-        finish(it, key, data.ok ? { status: "ok", result: data.result } : { status: "error", error: data.error });
+        finish(it, key, data.ok ? { status: "ok", result: data.result } : { status: "error", error: data.error, errorCode: data.code, errorValues: data.values });
         runNext(worker);
       };
       worker.onerror = (e) => {

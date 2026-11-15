@@ -28,11 +28,11 @@ export function useEngine(state, runToken, lang) {
       busyRef.current = false;
       setRes(data.ok
         ? { status: "ok", result: data.result, error: null, ms: performance.now() - startRef.current, progress: null }
-        : (prev) => ({ ...prev, status: "error", error: data.error, progress: null }));
+        : (prev) => ({ ...prev, status: "error", error: data.error, errorCode: data.code, errorValues: data.values, progress: null }));
     };
     w.onerror = (e) => {
       busyRef.current = false;
-      setRes((prev) => ({ ...prev, status: "error", error: e.message || getStrings().errors.crashed, progress: null }));
+      setRes((prev) => ({ ...prev, status: "error", error: e.message || getStrings().errors.crashed, errorCode: null, errorValues: null, progress: null }));
     };
     return w;
   };
@@ -56,7 +56,7 @@ export function useEngine(state, runToken, lang) {
     try {
       query = buildQuery(state);
     } catch (e) {
-      setRes((prev) => ({ ...prev, status: "error", error: e.message, progress: null }));
+      setRes((prev) => ({ ...prev, status: "error", error: e.message, errorCode: null, errorValues: null, progress: null }));
       return undefined;
     }
     setRes((prev) => ({ ...prev, status: "busy", error: null, progress: null }));

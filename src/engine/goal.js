@@ -1,4 +1,5 @@
 // Goal rows: parsing, item subsets, labels, grouping rows by pool, merging named items.
+import { EngineError, internalError } from "./errors.js";
 import { canonTree, findAlt, isPosInt, leavesUnder, normaliseNode, pathKey, resolvePath } from "./tree.js";
 
 export const goalList = (goal) => (Array.isArray(goal) ? goal : Object.entries(goal ?? {}).map(([path, copies]) => ({ path, copies })));
@@ -7,44 +8,44 @@ export function parseGoal(root, goalRaw) {
   const list = Array.isArray(goalRaw)
     ? goalRaw
     : Object.entries(goalRaw ?? {}).map(([path, copies]) => ({ path, copies }));
-  if (list.length === 0) throw new Error("Goal is empty");
+  if (list.length === 0) throw new EngineError("emptyGoal", {}, "Goal is empty");
   return list.map((g) => {
     // `paths` (several outcomes counted together) comes from expandSubsets; `path` is one outcome
     const paths = Array.isArray(g.paths) ? g.paths.map((x) => resolvePath(root, x)) : [resolvePath(root, g.path)];
     const path = paths[0];
     const shown = g.label ?? (g.path === undefined || g.path === "" ? "everything" : String(g.path ?? g.paths));
-    for (const p of paths) if (p.length && !findAlt(root, p)) throw new Error(`Goal path "${shown}" not in tree`);
+    for (const p of paths) if (p.length && !findAlt(root, p)) throw internalError(`Goal path "${shown}" not in tree`);
     const have = Math.max(0, Math.floor(Number(g.have) || 0));
     const copies = g.copies ?? 1;
-    if (!isPosInt(copies)) throw new Error(`copies for "${shown}" must be a positive integer`);
+    if (!isPosInt(copies)) throw internalError(`copies for "${shown}" must be a positive integer`);
     let type = g.type ?? "total";
     if (type === "specific") {
       const alt = findAlt(root, path);
       if (!alt || alt.child)
-        throw new Error(`"specific" needs a single item or a pool (count), not "${shown}"`);
+        throw internalError(`"specific" needs a single item or a pool (count), not "${shown}"`);
       if (alt.count === 1) return { type: "total", path, paths: [path], copies, have, label: g.label ?? `${shown} ×${copies}` };
       let item = g.item ?? 0;
       if (typeof item === "string" && !/^\d+$/.test(item)) {
         const j = (alt.itemNames ?? []).indexOf(item);
-        if (j < 0) throw new Error(`Pool "${shown}" has no item named "${item}"`);
+        if (j < 0) throw new EngineError("noItemNamed", { row: shown, item }, `Pool "${shown}" has no item named "${item}"`);
         item = j;
       }
       item = Number(item);
       if (!Number.isInteger(item) || item < 0 || item >= alt.count)
-        throw new Error(`Pool "${shown}" has items 0–${alt.count - 1}, not ${g.item}`);
+        throw new EngineError("itemOutOfRange", { row: shown, count: alt.count }, `Pool "${shown}" has items 0–${alt.count - 1}, not ${g.item}`);
       const nm = alt.itemNames?.[item] ?? `item ${item + 1}`;
       return { type, path, copies, group: alt, item, label: g.label ?? `${nm} ×${copies}` };
     }
     if (type === "distinct") {
       const k = g.k;
-      if (!isPosInt(k)) throw new Error(`k for "${shown}" must be a positive integer`);
+      if (!isPosInt(k)) throw internalError(`k for "${shown}" must be a positive integer`);
       const groups = [...new Set(paths.flatMap((p) => leavesUnder(root, p)))];
       const items = groups.reduce((s, a) => s + a.count, 0);
-      if (k > items) throw new Error(`"${shown}" has only ${items} items, can't get ${k} different`);
+      if (k > items) throw new EngineError("notEnoughItems", { row: shown, items, k }, `"${shown}" has only ${items} items, can't get ${k} different`);
       return { type, path, paths, copies, k, groups, items,
                label: g.label ?? `${k} different of ${shown}, ×${copies} each` };
     }
-    if (type !== "total") throw new Error(`Unknown goal type "${type}"`);
+    if (type !== "total") throw internalError(`Unknown goal type "${type}"`);
     return { type, path, paths, copies, have, label: g.label ?? `${shown} ×${copies}` };
   });
 }
@@ -71,18 +72,18 @@ export function expandSubsets(tree, goal, start = {}) {
   for (const g of goalOut) {
     if (!Array.isArray(g.items)) continue;
     const type = g.type ?? "total";
-    if (type !== "total" && type !== "distinct") throw new Error(`Only "total" and "distinct" requirements can pick items`);
+    if (type !== "total" && type !== "distinct") throw internalError(`Only "total" and "distinct" requirements can pick items`);
     const path = resolvePath(root, g.path);
     const alt = findAlt(root, path);
-    if (!alt || alt.child || alt.count < 2) throw new Error(`Picking items needs a pool (count > 1), not "${g.path}"`);
+    if (!alt || alt.child || alt.count < 2) throw internalError(`Picking items needs a pool (count > 1), not "${g.path}"`);
     const idx = g.items.map((it) => {
       if (typeof it === "number" || /^\d+$/.test(String(it))) return Number(it);
       const j = (alt.itemNames ?? []).indexOf(it);
-      if (j < 0) throw new Error(`Pool "${g.path}" has no item named "${it}"`);
+      if (j < 0) throw new EngineError("noItemNamed", { row: g.label ?? String(g.path), item: it }, `Pool "${g.path}" has no item named "${it}"`);
       return j;
     });
-    if (!idx.length) throw new Error(`Pick at least one item for "${g.label ?? g.path}"`);
-    for (const i of idx) if (!Number.isInteger(i) || i < 0 || i >= alt.count) throw new Error(`Pool "${g.path}" has items 0–${alt.count - 1}, not ${i}`);
+    if (!idx.length) throw new EngineError("pickNone", { row: g.label ?? String(g.path) }, `Pick at least one item for "${g.label ?? g.path}"`);
+    for (const i of idx) if (!Number.isInteger(i) || i < 0 || i >= alt.count) throw new EngineError("itemOutOfRange", { row: g.label ?? String(g.path), count: alt.count }, `Pool "${g.path}" has items 0–${alt.count - 1}, not ${i}`);
     g._set = new Set(idx);
     g._pool = pathKey(path);
     if (!byPool.has(g._pool)) byPool.set(g._pool, { path, alt, reqs: [] });
@@ -166,7 +167,7 @@ export function labelsOf(tree, list, start) {
 export function resolveItem(alt, it, where) {
   if (typeof it === "number" || /^\d+$/.test(String(it))) return Number(it);
   const j = (alt.itemNames ?? []).indexOf(it);
-  if (j < 0) throw new Error(`Pool "${where}" has no item named "${it}"`);
+  if (j < 0) throw new EngineError("noItemNamed", { row: where, item: it }, `Pool "${where}" has no item named "${it}"`);
   return j;
 }
 

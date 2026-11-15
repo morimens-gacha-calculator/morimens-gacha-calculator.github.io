@@ -2,6 +2,7 @@
 // Everything tracked together in one chain: exact for any goal, including the worst case;
 // used for small goals and for goals the other methods can't take (rows counting several
 // pools together, banners that don't restart at each event).
+import { EngineError } from "./errors.js";
 import { makeStepper } from "./chain-step.js";
 import { compile } from "./chain.js";
 import { expandSubsets, goalList, labelsOf, mergeNamedRows, rowShape } from "./goal.js";
@@ -31,7 +32,7 @@ export function solveJoint(orig, opts, eps, maxPulls, onProgress) {
 // "I have B pulls, what will I get?" — the chain without stopping at the goal,
 // run for B pulls; reports each requirement's progress distribution.
 export function budgetReport(tree, goal, opts, B) {
-  if (!(Number.isInteger(B) && B >= 0)) throw new Error("budget must be a whole number of pulls ≥ 0");
+  if (!(Number.isInteger(B) && B >= 0)) throw new EngineError("badBudget", {}, "budget must be a whole number of pulls ≥ 0");
   const c = compile(tree, goal, { ...opts, absorb: false });
   const { N, states, reqs } = c;
   const prog = reqs.map((r) => Int32Array.from(states, (s, k) => (k === 0 ? 0 : c.progress(r, s))));

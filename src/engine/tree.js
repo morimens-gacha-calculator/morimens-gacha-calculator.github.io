@@ -1,6 +1,7 @@
 // The banner tree: probabilities, normalised nodes, paths (by index or by name).
+import { EngineError, internalError } from "./errors.js";
 
-export function parseProb(x, where) {
+export function parseProb(x, where) { // where: outcome names, for messages
   if (x === "rest") return "rest";
   if (typeof x === "number") return x;
   if (typeof x === "string") {
@@ -8,7 +9,7 @@ export function parseProb(x, where) {
     const v = m ? Number(m[1]) / Number(m[2]) : Number(x);
     if (Number.isFinite(v)) return v;
   }
-  throw new Error(`Bad probability ${JSON.stringify(x)} at ${where}`);
+  throw new EngineError("badChance", { where, value: String(x) }, `Bad probability ${JSON.stringify(x)} at ${where}`);
 }
 
 export const pathKey = (path) => path.join(",");
@@ -17,20 +18,22 @@ export const isPrefix = (pre, path) => pre.length <= path.length && pre.every((v
 
 export const isPosInt = (x) => Number.isInteger(x) && x >= 1;
 
-export function normaliseNode(raw, path) {
+// names: outcome names leading here (for messages: "SSR › character" rather than [0,1])
+export function normaliseNode(raw, path, names = []) {
   const isObj = raw && !Array.isArray(raw);
   const altsRaw = isObj ? raw.alts : raw;
+  const here = names.join(" › ");
   if (!Array.isArray(altsRaw) || altsRaw.length === 0)
-    throw new Error(`Node at [${pathKey(path)}] has no alternatives`);
+    throw new EngineError("noOutcomes", { where: here }, `Node at [${pathKey(path)}] has no alternatives`);
   const node = { path, streak: isObj && raw.streak ? raw.streak : 0, alts: [] };
   altsRaw.forEach((a, i) => {
     const ap = [...path, i];
-    const where = `[${pathKey(ap)}]`;
     const o = Array.isArray(a) ? { p: a[0], pity: a[1], children: a[2] } : a;
+    const an = [...names, o.name ?? `#${i + 1}`], where = an.join(" › ");
     let count = o.count ?? 1, children = o.children ?? null;
     if (typeof children === "number") { count = children; children = null; }
-    if (!isPosInt(count)) throw new Error(`count at ${where} must be a positive integer`);
-    if (count > 1 && children) throw new Error(`A pool (count > 1) can't have children, at ${where}`);
+    if (!isPosInt(count)) throw new EngineError("badCount", { where }, `count at ${where} must be a positive integer`);
+    if (count > 1 && children) throw new EngineError("poolWithChildren", { where }, `A pool (count > 1) can't have children, at ${where}`);
     const p = parseProb(o.p, where);
     const alt = {
       name: o.name ?? null,
@@ -42,19 +45,19 @@ export function normaliseNode(raw, path) {
       count,
       itemNames: Array.isArray(o.items) ? o.items.map(String) : null,
       path: ap,
-      child: children ? normaliseNode(children, ap) : null,
+      child: children ? normaliseNode(children, ap, an) : null,
       cv: -1, icap: 0, spec: false, sumReqs: [],
     };
-    if (alt.p < 0 || alt.p > 1) throw new Error(`Probability out of range at ${where}`);
+    if (alt.p < 0 || alt.p > 1) throw new EngineError("chanceOutOfRange", { where }, `Probability out of range at ${where}`);
     node.alts.push(alt);
   });
   const rests = node.alts.filter((a) => a.rest).length;
   const sum = node.alts.reduce((s, a) => s + a.p, 0);
-  if (rests > 1) throw new Error(`More than one "rest" at [${pathKey(path)}]`);
+  if (rests > 1) throw new EngineError("manyRest", { where: here }, `More than one "rest" at [${pathKey(path)}]`);
   if (rests === 0 && Math.abs(sum - 1) > 1e-9)
-    throw new Error(`Probabilities at [${pathKey(path)}] sum to ${sum}, not 1`);
+    throw new EngineError("chancesSum", { where: here, sum }, `Probabilities at [${pathKey(path)}] sum to ${sum}, not 1`);
   if (rests === 1 && sum > 1 + 1e-9)
-    throw new Error(`Probabilities at [${pathKey(path)}] exceed 1 before "rest"`);
+    throw new EngineError("overOneBeforeRest", { where: here, sum }, `Probabilities at [${pathKey(path)}] exceed 1 before "rest"`);
   return node;
 }
 
@@ -66,9 +69,9 @@ export function resolvePath(root, spec) {
   const path = [];
   let node = root;
   for (const name of s.split("/")) {
-    if (!node) throw new Error(`Path "${s}" goes below a leaf`);
+    if (!node) throw internalError(`Path "${s}" goes below a leaf`);
     const i = node.alts.findIndex((a) => a.name === name);
-    if (i < 0) throw new Error(`No alternative named "${name}" in path "${s}"`);
+    if (i < 0) throw internalError(`No alternative named "${name}" in path "${s}"`);
     path.push(i);
     node = node.alts[i].child;
   }

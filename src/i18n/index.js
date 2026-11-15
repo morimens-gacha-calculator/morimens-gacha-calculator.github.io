@@ -25,6 +25,13 @@ let current = LOCALES[DEFAULT_LOCALE];
 export function setLocale(code) { current = LOCALES[code] ?? LOCALES[DEFAULT_LOCALE]; return current; }
 export const getStrings = () => current;
 
+// The text of a failed calculation in the given language: engine errors come with a code and
+// values (src/engine/errors.js); anything else is shown as it is.
+export function errorText(T, { error, errorCode, errorValues } = {}) {
+  const f = errorCode && T.errors.engine?.[errorCode];
+  return f ? f(errorValues ?? {}) : error;
+}
+
 // React components read strings with useT(), so they re-render when the language changes
 export const I18nContext = createContext(LOCALES[DEFAULT_LOCALE]);
 export const useT = () => useContext(I18nContext);

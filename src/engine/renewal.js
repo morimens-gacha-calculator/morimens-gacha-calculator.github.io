@@ -5,6 +5,7 @@
 //   Σ_m P(exactly m events by t)·f(m) = f(0) + Σ_{m≥1} P(τ_m ≤ t)·(f(m) − f(m−1))   (summation by parts)
 // and P(τ_m ≤ B) for every m from Parseval: Σ_t τ_m(t)·[t ≤ B] = (1/L) Σ_z Τ_m(z)·conj(I(z)).
 // The FFT length is longer than τ of the last event that matters, so nothing wraps around.
+import { EngineError } from "./errors.js";
 
 export function fft(re, im, inverse) {
   const n = re.length;
@@ -36,7 +37,7 @@ export function fftLength(gap1, gap, M, B) {
   const len = Math.max(B + 1, (gap1.length - 1) + Math.max(0, M - 1) * (gap.length - 1) + 1);
   let L = 2;
   while (L < len) L <<= 1;
-  if (L > 1 << 24) throw new Error("Too big: the budget spans too many pulls for the report.");
+  if (L > 1 << 24) throw new EngineError("budgetTooLong", { limit: 1 << 24 }, "Too big: the budget spans too many pulls for the report.");
   return L;
 }
 

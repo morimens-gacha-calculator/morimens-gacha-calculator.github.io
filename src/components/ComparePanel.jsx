@@ -4,7 +4,7 @@ import { HelpButton } from "./Help.jsx";
 import NumberInput from "./NumberInput.jsx";
 import { fmtInt, fmtNum, fmtPct } from "../model.js";
 import { themeColors, sample } from "./ResultChart.jsx";
-import { useT } from "../i18n/index.js";
+import { useT, errorText } from "../i18n/index.js";
 
 // Side-by-side comparison of saved setups (banner + plan + pity)
 export default function ComparePanel({ items, results, budget, setBudget, rename, remove, load, theme }) {
@@ -118,7 +118,7 @@ export default function ComparePanel({ items, results, budget, setBudget, rename
                     <td className={`num ${chance === best.chance && ready.length > 1 ? "best" : ""}`}>{fmtPct(chance)}</td>
                   </>
                 ) : (
-                  <td colSpan={5} className={res?.status === "error" ? "err-text" : "muted"}>{res?.status === "error" ? res.error : L.calculating}</td>
+                  <td colSpan={5} className={res?.status === "error" ? "err-text" : "muted"}>{res?.status === "error" ? errorText(T, res) : L.calculating}</td>
                 )}
                 <td className="actions">
                   <button type="button" className="btn btn--small" onClick={() => load(it)}>{L.load}</button>

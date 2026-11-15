@@ -69,6 +69,7 @@ self.onmessage = async ({ data }) => {
     }
     self.postMessage({ id, ok: true, result }, [...new Set(transferables(result))]);
   } catch (err) {
-    self.postMessage({ id, ok: false, error: err.message });
+    // code + values let the page show the message in the reader's language (errors.engine)
+    self.postMessage({ id, ok: false, error: err.message, code: err.code ?? null, values: err.values ?? null });
   }
 };

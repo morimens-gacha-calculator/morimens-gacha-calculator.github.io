@@ -13,6 +13,7 @@
 // (given h hits on the union, Binomial(h, p) of them land in A). Identical items are combined
 // by repeated squaring. Every term is ≥ 0, so there's no cancellation. Markers are handled by
 // evaluating at roots of unity (|value| ≤ 1) and transforming back with an inverse DFT.
+import { EngineError } from "./errors.js";
 
 const WCUT = 1e-21; // binomial weights below this are skipped (all block values are ≤ 1 in size)
 
@@ -447,7 +448,7 @@ export function poolNotMet(plan, tol, Hmax = 1e5) {
       if (plan.worstHits != null && plan.worstHits < out.length) out.fill(0, plan.worstHits);
       return out;
     }
-    if (H >= Hmax) throw new Error(`Too big: the pool goal needs more than ${Hmax.toLocaleString("en")} hits.`);
+    if (H >= Hmax) throw new EngineError("tooManyHits", { limit: Hmax }, `Too big: the pool goal needs more than ${Hmax.toLocaleString("en")} hits.`);
   }
 }
 

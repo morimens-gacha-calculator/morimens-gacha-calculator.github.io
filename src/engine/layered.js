@@ -11,6 +11,7 @@
 //            SSR pity), the gaps between events are independent and identically distributed;
 //            the number of pulls is a sum of gaps, combined with an FFT (renewal.js).
 // The joint state space is never built, so goals needing billions of joint states are cheap.
+import { EngineError } from "./errors.js";
 import { cached } from "./cache.js";
 import { compile, firstHitPmf } from "./chain.js";
 import { MAX_GROUPS, goalList, groupRows, ownedFor, rowsOf } from "./goal.js";
@@ -165,7 +166,7 @@ export function walkEvents(plan, caps, visit) {
       }
     }
     if (next.n > limit)
-      throw new Error(`Too big: ${next.n.toLocaleString("en")} states needed for the event layer (limit ${limit.toLocaleString("en")}).`);
+      throw new EngineError("tooBigEventLayer", { n: next.n, limit }, `Too big: ${next.n.toLocaleString("en")} states needed for the event layer (limit ${limit.toLocaleString("en")}).`);
     [cur, next] = [next, cur];
   }
 }
@@ -194,7 +195,7 @@ export function solveLayered(plan, eps, maxPulls, onProgress) {
     }
     U.push(Math.min(1, u));
     if (onProgress && (m & 15) === 0) onProgress({ phase: "calc", t: m, remaining: u, eps });
-    if (m >= 1e6) throw new Error("Too big: the goal needs more than a million events.");
+    if (m >= 1e6) throw new EngineError("tooManyEvents", { limit: 1e6 }, "Too big: the goal needs more than a million events.");
     return u > eps / 10;
   });
   const pM = U.map((u, m) => Math.max(0, (m ? U[m - 1] : 1) - u));
@@ -205,7 +206,7 @@ export function solveLayered(plan, eps, maxPulls, onProgress) {
   else {
     const Mmax = pM.length - 1;
     const len = (gap1.length - 1) + Math.max(0, Mmax - 1) * (gap.length - 1) + 1;
-    if (len > maxPulls + 1 && len > 1 << 23) throw new Error("Too big: the result would span too many pulls.");
+    if (len > maxPulls + 1 && len > 1 << 23) throw new EngineError("tooManyPulls", { limit: 1 << 23 }, "Too big: the result would span too many pulls.");
     let L = 1;
     while (L < len) L <<= 1;
     const gr = new Float64Array(L), gi = new Float64Array(L), hr = new Float64Array(L), hi = new Float64Array(L);
@@ -251,7 +252,7 @@ export function solveLayered(plan, eps, maxPulls, onProgress) {
 }
 
 export function budgetLayered(plan, B) {
-  if (!(Number.isInteger(B) && B >= 0)) throw new Error("budget must be a whole number of pulls ≥ 0");
+  if (!(Number.isInteger(B) && B >= 0)) throw new EngineError("badBudget", {}, "budget must be a whole number of pulls ≥ 0");
   const { items, gap, gap1, goalMode } = plan;
 
   // How many events (SSRs) can happen within B pulls: P(m-th event by pull B) for each m

@@ -220,7 +220,7 @@ export function toEngineTree(n) {
 export function fromEngineTree(raw) {
   const isObj = raw && !Array.isArray(raw);
   const altsRaw = isObj ? raw.alts : raw;
-  if (!Array.isArray(altsRaw) || !altsRaw.length) throw new Error("A node needs a list of alternatives");
+  if (!Array.isArray(altsRaw) || !altsRaw.length) throw new Error(getStrings().errors.engine.noOutcomes({ where: "" }));
   return node(altsRaw.map((a, i) => {
     const o = Array.isArray(a) ? { p: a[0], pity: a[1], children: a[2] } : a;
     let count = o.count ?? 1, ch = o.children ?? null;

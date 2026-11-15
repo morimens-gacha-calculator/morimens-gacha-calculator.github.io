@@ -43,6 +43,7 @@
 //   streak: { "1,1": [0, 2] },      node path → [last alternative index, run length]
 //   owned:  { "1,1,0": [2, 0, 1],   per-item copies of a pool, in item order
 //             "1,0": 3 } }          or a total; paths must not be nested in each other
+import { EngineError } from "./errors.js";
 
 import { cached, now } from "./cache.js";
 import { MAX_GROUPS, expandSubsets } from "./goal.js";
@@ -68,11 +69,11 @@ function choosePlan({ tree, goal, goalMode, start, eps, maxStates, method, onPro
     ? cached("planLayered", [tree, goal, start, goalMode, maxStates, eps, method], () => planLayered(tree, goal, { start, goalMode, maxStates }, eps, method === "layered"))
     : null;
   const small = !!lp?.small, layered = small ? null : lp;
-  if (method === "layered" && !layered) throw new Error(`method "layered" needs every row on one pool or single outcome (up to ${MAX_GROUPS} of them), under an event that restarts the banner`);
+  if (method === "layered" && !layered) throw new EngineError("layeredDoesntFit", { groups: MAX_GROUPS }, `method "layered" needs every row on one pool or single outcome (up to ${MAX_GROUPS} of them), under an event that restarts the banner`);
   const split = !layered && !(small && method === "auto") && (method === "auto" || method === "split")
     ? cached("planSplit", [tree, goal, start, goalMode, maxStates, eps, method], () => planSplit(tree, goal, { start, goalMode, maxStates }, eps, method === "split"))
     : null;
-  if (method === "split" && !split) throw new Error(`method "split" needs all requirements on one pool`);
+  if (method === "split" && !split) throw new EngineError("splitDoesntFit", {}, `method "split" needs all requirements on one pool`);
   const ex = expandSubsets(tree, goal, start);
   return { layered, split, orig, tree: ex.tree, goal: ex.goal, opts: { start: ex.start, goalMode, maxStates, onProgress } };
 }

@@ -2,6 +2,9 @@
 // translate the values, and register it in src/i18n/index.js.
 // Keys stay the same in every language. Values that take numbers are functions, so each
 // language can handle its own plural forms.
+const num = (x) => Number(x).toLocaleString("en-US");
+const pct = (x) => `${+(Number(x) * 100).toFixed(4)}%`;
+const place = (where) => (where ? `"${where}"` : "The banner's top level");
 
 const plural = (n, one, many) => (n === 1 ? one : many);
 
@@ -323,6 +326,33 @@ export default {
     crashed: "The calculation stopped unexpectedly.",
     noItems: (row) => `"${row}": pick at least one item in From.`,
     tooFewItems: (n, k) => `Only ${n} items are chosen, so ${k} different ones are impossible.`,
+    engine: {
+      // where: outcome names like "SSR › character"; empty means the banner's top level
+      badChance: (v) => `${place(v.where)}: chance "${v.value}" isn't a number. Use 0.5, 1/2, 50% or rest.`,
+      noOutcomes: (v) => `${place(v.where)} has no outcomes. Add at least one.`,
+      badCount: (v) => `${place(v.where)}: the number of items must be a whole number, 1 or more.`,
+      poolWithChildren: (v) => `${place(v.where)} is a pool of several items, so it can't also have sub-outcomes.`,
+      chanceOutOfRange: (v) => `${place(v.where)}: a chance must be between 0 and 1 (0% to 100%).`,
+      manyRest: (v) => `${place(v.where)}: only one outcome can have the chance "rest".`,
+      chancesSum: (v) => `${place(v.where)}: the chances add up to ${pct(v.sum)}, not 100%. Fix them or give one outcome "rest".`,
+      overOneBeforeRest: (v) => `${place(v.where)}: the other chances already add up to ${pct(v.sum)}, so nothing is left for "rest".`,
+      emptyGoal: () => "Add at least one target to the pull plan.",
+      noItemNamed: (v) => `"${v.row}": there's no item "${v.item}" any more. Pick it again in the pull plan.`,
+      itemOutOfRange: (v) => `"${v.row}": that pool has only ${num(v.count)} items now. Pick the item again in the pull plan.`,
+      notEnoughItems: (v) => `"${v.row}": there are only ${num(v.items)} items, so ${num(v.k)} different ones are impossible.`,
+      pickNone: (v) => `"${v.row}": pick at least one item in From.`,
+      tooBigStates: (v) => `Too big to calculate within the limit of ${num(v.limit)} states. Lower the copies or the number of items, or raise "Max states" in Settings (or turn on "No limits").`,
+      tooBigEventLayer: (v) => `Too big to calculate: it needs ${num(v.n)} states, over the limit of ${num(v.limit)}. Lower the copies, or raise "Max states" in Settings (or turn on "No limits").`,
+      tooManyEvents: () => "Too big to calculate: the goal would take more than a million SSRs.",
+      tooManyPulls: () => "Too big to calculate: the result would span too many pulls.",
+      tooManyHits: (v) => `Too big to calculate: one pool would need more than ${num(v.limit)} hits. Lower the copies.`,
+      budgetTooLong: () => "The budget is too long for the report. Try fewer pulls.",
+      unreachable: () => "This goal can't be reached with this banner.",
+      badBudget: () => "The number of pulls must be a whole number, 0 or more.",
+      layeredDoesntFit: (v) => `The "Layered" method doesn't fit this goal: every target must be one pool or outcome (up to ${num(v.groups)}), and the banner must restart at each SSR. Choose "Automatic" in Settings.`,
+      splitDoesntFit: () => `The "Split" method needs every target on one pool. Choose "Automatic" in Settings.`,
+      internal: (v) => `Something went wrong inside the calculator (please report it): ${v.detail}`,
+    },
   },
 
   // Built-in banners. Outcome and item names here become the editable banner.

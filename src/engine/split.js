@@ -3,6 +3,7 @@
 // (pity, streaks). So: (a) the pool formulas give P(goal not met after n hits); (b) the banner
 // chain gives the distribution of hits on the pool after t pulls; combine. Exact. Used when the
 // layered method doesn't fit (the banner doesn't restart at each event).
+import { EngineError } from "./errors.js";
 import { cached } from "./cache.js";
 import { makeStepper } from "./chain-step.js";
 import { compile } from "./chain.js";
@@ -71,7 +72,7 @@ export function solveSplit(tree, plan, opts, eps, maxPulls) {
 }
 
 export function budgetSplit(tree, plan, opts, B) {
-  if (!(Number.isInteger(B) && B >= 0)) throw new Error("budget must be a whole number of pulls ≥ 0");
+  if (!(Number.isInteger(B) && B >= 0)) throw new EngineError("badBudget", {}, "budget must be a whole number of pulls ≥ 0");
   // Per number of hits n ≤ B: each row's progress distribution and the goal chance
   const { D, E, G } = plan.formula
     ? cached("poolBudget", [plan.formula, B], () => poolBudget(plan.formula, B))
