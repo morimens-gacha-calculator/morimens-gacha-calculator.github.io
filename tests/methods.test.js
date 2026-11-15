@@ -1,0 +1,102 @@
+// The three methods (joint, split, layered) are independent ways to the same exact answer:
+// on goals small enough for all of them, they must agree.
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { solve, budgetOnly } from "../src/engine/banner-engine.js";
+import { preset, resultDiff } from "./helpers.js";
+
+const K2 = preset("kaleido2"), K1 = preset("kaleido1"), A = preset("anniversary"), LC = preset("limitedChar");
+const own = Array(15).fill(0); own[0] = 1; own[3] = 2; // Arc 1 has 15 characters
+
+const layeredCases = [
+  ["Kaleido default goal", K2],
+  ["Kaleido, any mode", { ...K2, goalMode: "any" }],
+  ["Kaleido: subset + total", { ...K2, goal: [{ path: "0,0", type: "distinct", k: 2, copies: 1, items: [0, 1, 2] }, { path: "0,1", type: "total", copies: 3 }] }],
+  ["Kaleido: two rows on one pool", { ...K2, goal: [{ path: "0,0", type: "specific", item: 0, copies: 2 }, { path: "0,0", type: "specific", item: 1, copies: 1 }, { path: "0,1", type: "specific", item: 0, copies: 1 }] }],
+  ["Kaleido: pity and memory at the start", { ...K2, start: { pity: { "0": 12 }, streak: { "0": [0, 1] }, owned: {} } }],
+  ["Kaleido: owned copies", { ...K1, goal: [{ path: "0,0", type: "distinct", k: 3, copies: 2 }, { path: "0,1", type: "specific", item: 0, copies: 1 }], start: { owned: { "0,0": own } } }],
+  ["Kaleido: subset with have", { ...K1, goal: [{ path: "0,0", type: "total", copies: 4, have: 1, items: [0, 1] }, { path: "0,1", type: "specific", item: 1, copies: 1 }] }],
+  ["Kaleido: one pool only", { ...K1, goal: [{ path: "0,0", type: "distinct", k: 2, copies: 2 }] }],
+  ["Anniversary default", A],
+  ["Anniversary, any mode", { ...A, goalMode: "any" }],
+  ["Anniversary from pity 20", { ...A, start: { pity: { "0": 20, "0,0": 1 } } }],
+  ["Anniversary: 3 groups", { ...A, goal: [{ path: "0,0,0", copies: 2 }, { path: "0,0,1", copies: 1 }, { path: "0,1", type: "distinct", k: 3, copies: 1 }] }],
+  ["Anniversary: 3 groups, any", { ...A, goalMode: "any", goal: [{ path: "0,0,0", copies: 3 }, { path: "0,0,1", copies: 2 }, { path: "0,1", type: "specific", item: 2, copies: 2 }] }],
+  ["Anniversary: 3 groups, start + owned", { ...A, start: { pity: { "0": 17, "0,0": 1 }, streak: { "0,0": [1, 1] }, owned: { "0,1": [1, 0, 2, 0, 0, 0, 1, 0, 0, 0] } }, goal: [{ path: "0,0,0", copies: 2 }, { path: "0,0,1", copies: 2 }, { path: "0,1", type: "distinct", k: 4, copies: 2 }] }],
+  ["Limited character: pity inside the SSR", { ...LC, goal: [{ path: "0,0", copies: 2 }, { path: "0,1", type: "distinct", k: 3, copies: 1 }], start: { pity: { "0": 10, "0,0": 2 } } }],
+  ["Limited character ×3 from a start", { ...LC, goal: [{ path: "0,0", copies: 3 }], start: { pity: { "0": 5, "0,0": 2 } } }],
+];
+for (const [label, q] of layeredCases) {
+  test(`layered = joint: ${label}`, () => {
+    const J = solve({ ...q, method: "joint", budget: 300 });
+    const L = solve({ ...q, method: "layered", budget: 300 });
+    assert.equal(L.method, "layered");
+    assert.deepEqual(L.requirements, J.requirements, "row labels");
+    const d = resultDiff(J, L);
+    assert.ok(d < 1e-9, `differs by ${d}`);
+  });
+}
+
+// A banner that doesn't restart at each SSR (the SR counter keeps going): split instead of layered
+const srTree = [
+  { name: "SSR", p: 0.02, pity: 40, children: [{ name: "pool", p: 1, count: 6, items: ["A", "B", "C", "D", "E", "F"] }] },
+  { name: "SR", p: 0.1, pity: 8 },
+  { name: "R", p: "rest" },
+];
+const splitCases = [
+  ["specific ×2", [{ path: "0,0", type: "specific", item: 1, copies: 2 }], {}, "all"],
+  ["3 different ×2 + total 8, owned", [{ path: "0,0", type: "distinct", k: 3, copies: 2 }, { path: "0,0", copies: 8 }], { owned: { "0,0": [1, 0, 0, 2, 0, 0] } }, "all"],
+  ["subset, any mode, from pity", [{ path: "0,0", type: "distinct", k: 2, copies: 1, items: ["A", "C", "E"] }, { path: "0,0", type: "specific", item: "B", copies: 3 }], { pity: { "0": 13, "1": 5 } }, "any"],
+  ["named items merged (all)", ["A", "B", "C", "D"].map((it) => ({ path: "0,0", type: "specific", item: it, copies: 2 })), {}, "all"],
+  ["named items merged (any)", [{ path: "0,0", type: "specific", item: "A", copies: 3 }, { path: "0,0", type: "specific", item: "B", copies: 3 }, { path: "0,0", type: "specific", item: "C", copies: 1 }], {}, "any"],
+];
+for (const [label, goal, start, goalMode] of splitCases) {
+  test(`split = joint: ${label}`, () => {
+    const q = { tree: srTree, goal, start, goalMode, budget: 250 };
+    const J = solve({ ...q, method: "joint" }), S = solve({ ...q, method: "split" });
+    assert.equal(S.method, "split");
+    const d = resultDiff(J, S);
+    assert.ok(d < 1e-9, `differs by ${d}`);
+  });
+}
+
+test("layered refuses a banner that doesn't restart at each SSR", () => {
+  assert.throws(() => solve({ tree: srTree, goal: [{ path: "0,0", type: "specific", item: 1, copies: 2 }], method: "layered" }));
+});
+
+test("budgetOnly (pulls mode) = budget report of solve", () => {
+  const a = budgetOnly({ ...K2, method: "layered", budget: 200 }), b = solve({ ...K2, method: "joint", budget: 200 }).budget;
+  assert.ok(Math.abs(a.chanceGoal - b.chanceGoal) < 1e-12);
+});
+
+// Item subsets vs the same goal written out by hand (one outcome per character)
+const chars = ["Lily", "GHelot", "Miryam", "Tawil", "Thais", "Daffodil", "Ryker", "Murphy", "Tulu", "Horla", "Wanda", "24", "Hameln", "Salvador", "Sorel"];
+const N = chars.length;
+const banner = (characterNode) => [
+  { name: "SSR", p: "1/33", pity: 30, children: { streak: 2, alts: [characterNode, { name: "wheel", p: "2/3", count: N }] } },
+  { name: "rest", p: "rest" },
+];
+const pool = banner({ name: "character", p: "1/3", count: N, items: chars });
+const each = banner({ name: "character", p: "1/3", children: chars.map((c) => ({ name: c, p: `1/${N}` })) });
+const want = ["Lily", "Tawil", "Sorel"];
+const leaf = (name) => `0,0,${chars.indexOf(name)}`;
+for (const [label, A1, B1] of [
+  ["5 copies total from 3 chosen", { tree: pool, goal: [{ path: "0,0", type: "total", items: want, copies: 5 }] }, { tree: each, goal: [{ paths: want.map(leaf), type: "total", copies: 5 }] }],
+  ["2 different of 4 chosen", { tree: pool, goal: [{ path: "0,0", type: "distinct", items: [...want, "Wanda"], k: 2 }] }, { tree: each, goal: [{ paths: [...want, "Wanda"].map(leaf), type: "distinct", k: 2 }] }],
+  ["Lily ×2 + 3 total from 3 chosen", { tree: pool, goal: [{ path: "0,0", type: "specific", item: "Lily", copies: 2 }, { path: "0,0", type: "total", items: want, copies: 3 }] }, { tree: each, goal: [{ path: leaf("Lily"), copies: 2 }, { paths: want.map(leaf), type: "total", copies: 3 }] }],
+  ["2 different of 3 chosen, Tawil owned", { tree: pool, goal: [{ path: "0,0", type: "distinct", items: want, k: 2 }], start: { owned: { "0,0": chars.map((c) => (c === "Tawil" ? 1 : 0)) } } }, { tree: each, goal: [{ paths: want.map(leaf), type: "distinct", k: 2 }], start: { owned: { [leaf("Tawil")]: 1 } } }],
+  ["overlapping subsets, any mode", { tree: pool, goalMode: "any", goal: [{ path: "0,0", type: "total", items: ["Lily", "Tawil"], copies: 3 }, { path: "0,0", type: "total", items: ["Tawil", "Sorel"], copies: 3 }] }, { tree: each, goalMode: "any", goal: [{ paths: ["Lily", "Tawil"].map(leaf), type: "total", copies: 3 }, { paths: ["Tawil", "Sorel"].map(leaf), type: "total", copies: 3 }] }],
+]) {
+  test(`subsets: ${label}`, () => {
+    const a = solve({ ...A1, budget: 500 }), b = solve({ ...B1, budget: 500 });
+    assert.ok(Math.abs(a.mean - b.mean) < 1e-6, `${a.mean} vs ${b.mean}`);
+    assert.ok(Math.abs(a.budget.chanceGoal - b.budget.chanceGoal) < 1e-9);
+  });
+}
+
+test("big goal: all 19 ×6 + all 19 wheels ×6 runs and is sensible", () => {
+  const r = solve({ ...K2, goal: [{ path: "0,0", type: "distinct", k: 19, copies: 6 }, { path: "0,1", type: "distinct", k: 19, copies: 6 }] });
+  assert.equal(r.method, "layered");
+  assert.ok(Math.abs(r.mean - 9814.56) < 0.01, `mean ${r.mean}`);
+  assert.ok(r.tail < 1e-12);
+});

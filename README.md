@@ -10,6 +10,17 @@ hosted on GitHub Pages.
     npm run dev        # http://localhost:5173
     npm run build      # production build in dist/
 
+## Tests
+
+    npm test
+
+Checks that the engine stays exact: hand-computable answers, the built-in banners' results,
+the pool formulas against a slow state-by-state calculation (fixed and random goals), the three
+calculation methods against each other, item subsets against the same goal written out by
+hand, the WebAssembly and multi-thread stepping, and that every translation has all keys.
+Takes about 15 seconds. GitHub Actions runs it before every deploy (nothing is published if a
+test fails) and on pull requests.
+
 ## Deploy to GitHub Pages
 
 1. Push this folder to a GitHub repository (branch `main`).

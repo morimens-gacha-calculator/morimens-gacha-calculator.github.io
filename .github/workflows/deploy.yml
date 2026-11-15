@@ -1,4 +1,4 @@
-# Builds the app and publishes it to GitHub Pages on every push to main.
+# Tests, builds and publishes the app to GitHub Pages on every push to main.
 # In the repository: Settings → Pages → Source: "GitHub Actions".
 name: Deploy to GitHub Pages
 on:
@@ -22,6 +22,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: npm test # exactness checks: nothing is published if one fails
       - run: npm run build
       - uses: actions/upload-pages-artifact@v3
         with:

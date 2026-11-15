@@ -187,7 +187,7 @@ function parseGoal(root, goalRaw) {
       const alt = findAlt(root, path);
       if (!alt || alt.child)
         throw new Error(`"specific" needs a single item or a pool (count), not "${shown}"`);
-      if (alt.count === 1) return { type: "total", path, copies, label: g.label ?? `${shown} ×${copies}` };
+      if (alt.count === 1) return { type: "total", path, paths: [path], copies, have, label: g.label ?? `${shown} ×${copies}` };
       let item = g.item ?? 0;
       if (typeof item === "string" && !/^\d+$/.test(item)) {
         const j = (alt.itemNames ?? []).indexOf(item);
