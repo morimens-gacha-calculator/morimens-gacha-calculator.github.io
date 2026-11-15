@@ -55,9 +55,9 @@ export function solveSplit(tree, plan, opts, eps, maxPulls) {
   // Banner chain counting hits on the pool, up to nMax (state 0 = "nMax or more")
   const c = cached("splitChain", [tree, poolPath, nMax, bannerStart, opts.maxStates], () =>
     compile(tree, [{ path: poolPath, copies: nMax }], { start: bannerStart, maxStates: opts.maxStates, onProgress: opts.onProgress }));
-  const { N, states } = c;
+  const { N } = c;
   const st = makeStepper(c);
-  const miss = st.weights(Float64Array.from(states, (s, k) => (k === 0 ? 0 : S[c.progress(c.reqs[0], s)])));
+  const miss = st.weights(Float64Array.from({ length: N }, (_, k) => (k === 0 ? 0 : S[c.progress(c.reqs[0], c.stateAt(k))])));
   const sumMiss = () => st.dot(miss);
   const survival = [sumMiss()], pmf = [1 - survival[0]];
   let t = 0, remaining = survival[0];
@@ -95,8 +95,8 @@ export function budgetSplit(tree, plan, opts, B) {
     goalByPull.fill(1 - G[0]);
   } else {
     const c = compile(tree, [{ path: plan.poolPath, copies: nB }], { start: bannerStart, maxStates: opts.maxStates, onProgress: opts.onProgress });
-    const { N, startIndex, states } = c;
-    const hits = Int32Array.from(states, (s, k) => (k === 0 ? nB : c.progress(c.reqs[0], s)));
+    const { N, startIndex } = c;
+    const hits = Int32Array.from({ length: N }, (_, k) => (k === 0 ? nB : c.progress(c.reqs[0], c.stateAt(k))));
     const st = makeStepper(c);
     const wE = reqs.map((_, i) => st.weights(Float64Array.from(hits, (h) => E[i][h])));
     const wG = st.weights(Float64Array.from(hits, (h) => 1 - G[h]));

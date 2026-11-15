@@ -239,34 +239,40 @@ export function compile(treeRaw, goalRaw, { start: startRaw = {}, goalMode = "al
   }
 
   // BFS over reachable states. Index 0 = "goal reached" sink when absorbing.
+  // States are kept packed (StateStore) and transitions go straight into CSR arrays (RowBuilder):
+  // about 8× less memory than one array, one text key and one Map per state. Same arithmetic in
+  // the same order as before, so results are identical.
   const done = absorb ? isDone : () => false;
-  const index = new Map();
-  const states = [null], rows = [null];
-  if (!done(start)) { index.set(start.join(","), 1); states.push(start); }
-  if (onProgress) onProgress({ phase: "build", states: states.length });
-  for (let k = 1; k < states.length; k++) {
+  const store = new StateStore(nVars);
+  const rows = new RowBuilder();
+  if (!done(start)) store.add(Int32Array.from(start));
+  if (onProgress) onProgress({ phase: "build", states: store.n });
+  let reachesSink = false;
+  const merged = new Map();
+  for (let k = 1; k < store.n; k++) {
     if ((k & 2047) === 0) {
       stopIfCancelled();
-      if (onProgress) onProgress({ phase: "build", states: states.length });
+      if (onProgress) onProgress({ phase: "build", states: store.n });
     }
-    const merged = new Map();
-    for (const [p, t, lab] of step(states[k])) {
+    merged.clear();
+    for (const [p, t, lab] of step(store.view(k))) {
       let j = 0;
       if (!done(t)) {
-        const key = t.join(",");
-        j = index.get(key);
-        if (j === undefined) {
-          j = states.length; index.set(key, j); states.push(t);
+        j = store.find(t);
+        if (j < 0) {
+          j = store.add(t);
           if (j > maxStates) throw new EngineError("tooBigStates", { limit: maxStates }, `Too big: over ${maxStates} states. Try fewer copies, fewer tracked items, or a higher maxStates.`);
         }
       }
       const key = j * 8 + lab; // target and label in one key
       merged.set(key, (merged.get(key) ?? 0) + p);
     }
-    rows.push(merged);
+    if (merged.has(0)) reachesSink = true;
+    rows.addRow(k, merged);
   }
-  if (absorb && states.length > 1 && !rows.some((r, k) => k > 0 && r.has(0)))
+  if (absorb && store.n > 1 && !reachesSink)
     throw new EngineError("unreachable", {}, "The goal can't be reached with this banner");
+  const fullStates = store.n - 1;
 
   // Exact reduction: drop pity/streak variables that can't change the result
   const candidates = [];
@@ -277,58 +283,146 @@ export function compile(treeRaw, goalRaw, { start: startRaw = {}, goalMode = "al
       if (a.child) collect(a.child);
     }
   })(root);
-  let startIndex = states.length > 1 ? 1 : 0;
-  if (onProgress) onProgress({ phase: "reduce", states: states.length });
-  let st = states, rw = rows, progressMade = true;
+  let startIndex = store.n > 1 ? 1 : 0;
+  if (onProgress) onProgress({ phase: "reduce", states: store.n });
+  let st = store, csr = rows.finish(store.n), progressMade = true;
   const dropped = new Set();
   while (progressMade) {
     progressMade = false;
     for (const x of candidates) {
       if (dropped.has(x)) continue;
-      const res = projectOut(st, rw, x);
+      const res = projectOut(st, csr, x);
       if (res) {
-        st = res.states; rw = res.rows; startIndex = res.group[startIndex];
+        st = res.store; csr = res.csr; startIndex = res.group[startIndex];
         dropped.add(x); progressMade = true;
       }
     }
   }
-  const packed = pack(st, rw);
   return {
-    ...packed, startIndex, states: st, fullStates: states.length - 1,
-    worst: absorb ? worstCase(packed, startIndex) : null,
+    ...csr, startIndex, fullStates,
+    stateAt: (k) => st.view(k), // the counters of state k (k ≥ 1), for progress() and isDone()
+    memoryBytes: st.data.byteLength + st.table.byteLength, // the stored states (for the cache)
+    worst: absorb ? worstCase(csr, startIndex) : null,
     reqs, progress, isDone, goalMode,
   };
 }
 
+// States as rows of one growing Int32Array, found through an open-addressing hash table.
+// Index 0 is the sink (no counters); states are 1, 2, …
+export class StateStore {
+  constructor(nVars) {
+    this.nv = Math.max(1, nVars);
+    this.n = 1;
+    this.data = new Int32Array(this.nv * 1024);
+    this.table = new Int32Array(2048).fill(-1);
+    this.mask = 2047;
+  }
+  hash(t) {
+    let h = 0x811c9dc5;
+    for (let i = 0; i < this.nv; i++) { h ^= t[i] | 0; h = Math.imul(h, 0x01000193); }
+    h ^= h >>> 15;
+    return Math.imul(h, 0x2c1b3c6d) >>> 0;
+  }
+  same(k, t) {
+    const d = this.data, o = k * this.nv;
+    for (let i = 0; i < this.nv; i++) if (d[o + i] !== (t[i] | 0)) return false;
+    return true;
+  }
+  find(t) {
+    let slot = this.hash(t) & this.mask;
+    for (;;) {
+      const k = this.table[slot];
+      if (k < 0) return -1;
+      if (this.same(k, t)) return k;
+      slot = (slot + 1) & this.mask;
+    }
+  }
+  add(t) {
+    const k = this.n++;
+    if ((k + 1) * this.nv > this.data.length) { const d = new Int32Array(this.data.length * 2); d.set(this.data); this.data = d; }
+    this.data.set(t.length === this.nv ? t : Int32Array.from({ length: this.nv }, (_, i) => t[i] | 0), k * this.nv);
+    if (2 * this.n > this.table.length) this.rehash(this.table.length * 2);
+    let slot = this.hash(t) & this.mask;
+    while (this.table[slot] >= 0) slot = (slot + 1) & this.mask;
+    this.table[slot] = k;
+    return k;
+  }
+  rehash(size) {
+    this.table = new Int32Array(size).fill(-1);
+    this.mask = size - 1;
+    for (let k = 1; k < this.n; k++) {
+      let slot = this.hash(this.view(k)) & this.mask;
+      while (this.table[slot] >= 0) slot = (slot + 1) & this.mask;
+      this.table[slot] = k;
+    }
+  }
+  view(k) { return this.data.subarray(k * this.nv, (k + 1) * this.nv); }
+}
+
+// Transitions written row by row (in BFS order) into growing CSR arrays. A row is given as a Map
+// key → probability with key = target·8 + label, in the order its entries were first reached.
+export class RowBuilder {
+  constructor() {
+    this.rowStart = new Int32Array(1024);
+    this.col = new Int32Array(4096); this.prob = new Float64Array(4096); this.lab = new Uint8Array(4096);
+    this.e = 0;
+  }
+  addRow(k, m) {
+    if (k + 2 > this.rowStart.length) { const r = new Int32Array(this.rowStart.length * 2); r.set(this.rowStart); this.rowStart = r; }
+    if (this.e + m.size > this.col.length) {
+      const size = Math.max(this.col.length * 2, this.e + m.size);
+      const c = new Int32Array(size), p = new Float64Array(size), l = new Uint8Array(size);
+      c.set(this.col); p.set(this.prob); l.set(this.lab);
+      this.col = c; this.prob = p; this.lab = l;
+    }
+    this.rowStart[k] = this.e;
+    for (const [key, p] of m) { this.col[this.e] = key >> 3; this.lab[this.e] = key & 7; this.prob[this.e] = p; this.e++; }
+    this.rowStart[k + 1] = this.e;
+  }
+  finish(N) {
+    const e = this.e;
+    const rowStart = new Int32Array(N + 1);
+    rowStart.set(this.rowStart.subarray(0, N + 1));
+    rowStart[N] = e;
+    // views, not copies: no second copy of every transition at the peak
+    return { N, rowStart, col: this.col.subarray(0, e), prob: this.prob.subarray(0, e), lab: this.lab.subarray(0, e) };
+  }
+}
+
 // Merge states that differ only in variable x, if that is exact: every merged
 // state must have identical probabilities into every merged group.
-export function projectOut(states, rows, x, tol = LUMPING_TOLERANCE) {
-  const N = states.length;
+export function projectOut(store, csr, x, tol = LUMPING_TOLERANCE) {
+  const N = store.n;
   const group = new Int32Array(N);
-  const keyMap = new Map();
-  const newStates = [null], reps = [0];
+  const next = new StateStore(store.nv), reps = [0];
   for (let k = 1; k < N; k++) {
-    const t = states[k].slice();
+    const t = store.view(k).slice();
     t[x] = 0;
-    const key = t.join(",");
-    let g = keyMap.get(key);
-    if (g === undefined) { g = newStates.length; keyMap.set(key, g); newStates.push(t); reps.push(k); }
+    let g = next.find(t);
+    if (g < 0) { g = next.add(t); reps.push(k); }
     group[k] = g;
   }
-  if (newStates.length === N) return null;
+  if (next.n === N) return null;
+  const { rowStart, col, prob, lab } = csr;
   const mergeRow = (k) => {
     const m = new Map();
-    for (const [key, p] of rows[k]) { const g = group[key >> 3] * 8 + (key & 7); m.set(g, (m.get(g) ?? 0) + p); }
+    for (let e = rowStart[k]; e < rowStart[k + 1]; e++) { const g = group[col[e]] * 8 + lab[e]; m.set(g, (m.get(g) ?? 0) + prob[e]); }
     return m;
   };
-  const newRows = [null];
-  for (let g = 1; g < newStates.length; g++) newRows.push(mergeRow(reps[g]));
+  const rows = new RowBuilder();
+  for (let g = 1; g < next.n; g++) rows.addRow(g, mergeRow(reps[g]));
+  const merged = rows.finish(next.n);
+  const rowOf = (g) => {
+    const m = new Map();
+    for (let e = merged.rowStart[g]; e < merged.rowStart[g + 1]; e++) m.set(merged.col[e] * 8 + merged.lab[e], merged.prob[e]);
+    return m;
+  };
   for (let k = 1; k < N; k++) {
-    const a = mergeRow(k), b = newRows[group[k]];
+    const a = mergeRow(k), b = rowOf(group[k]);
     for (const [g, p] of a) if (Math.abs(p - (b.get(g) ?? 0)) > tol) return null;
     for (const [g, p] of b) if (!a.has(g) && p > tol) return null;
   }
-  return { states: newStates, rows: newRows, group };
+  return { store: next, csr: merged, group };
 }
 
 // Exact worst case: the most pulls the goal can possibly take. It exists only when no
@@ -356,21 +450,6 @@ export function worstCase({ N, rowStart, col }, startIndex) {
     longest[k] = m;
   }
   return longest[startIndex];
-}
-
-// Pack transitions into CSR arrays for the fast DP loop
-export function pack(states, rows) {
-  const N = states.length;
-  let nnz = 0;
-  for (let k = 1; k < N; k++) nnz += rows[k].size;
-  const rowStart = new Int32Array(N + 1), col = new Int32Array(nnz), prob = new Float64Array(nnz), lab = new Uint8Array(nnz);
-  let e = 0;
-  for (let k = 1; k < N; k++) {
-    rowStart[k] = e;
-    for (const [key, p] of rows[k]) { col[e] = key >> 3; lab[e] = key & 7; prob[e] = p; e++; }
-  }
-  rowStart[N] = e;
-  return { N, rowStart, col, prob, lab };
 }
 
 // One pull: push probability mass along the transitions (state 0 = sink, skipped)

@@ -33,11 +33,13 @@ export const LUMPING_TOLERANCE = 1e-12;
 
 // ── Limits (protect the browser tab) ────────────────────────────────────────────────────────
 // The first two are the defaults of the Settings tab; "No limits" lifts them.
-export const DEFAULT_MAX_STATES = 1e6;       // chain states (about 1.1–1.3 KB each while building)
+// Chain states: building one peaks at about 0.5–0.6 KB (115 bytes kept), so 2 million states
+// need about the 1.1–1.2 GB that 1 million did before chain building was made leaner.
+export const DEFAULT_MAX_STATES = 2e6;
 export const DEFAULT_MAX_PULLS = 1e6;
-// Event-layer cells are plain numbers with no stored transitions, about 10× cheaper than chain
-// states: allowed per max state, and never more than this in total.
-export const EVENT_CELLS_PER_STATE = 10;
+// Event-layer cells (about 40–50 bytes each): allowed per max state (10 million at the default),
+// and never more than this in total.
+export const EVENT_CELLS_PER_STATE = 5;
 export const MAX_EVENT_CELLS = 4e7;
 export const MAX_EVENTS = 1e6;               // events (SSRs) a goal may need
 export const MAX_PULL_SPAN = 1 << 23;        // pulls the layered result may span (FFT length)
@@ -55,7 +57,8 @@ export const TINY_JOINT_CHAIN = 3000;
 export const SPLIT_ADVANTAGE = 4;
 
 // ── Speed ───────────────────────────────────────────────────────────────────────────────────
-export const CACHE_ENTRIES = 48;             // pieces kept between calculations
+export const CACHE_MAX_BYTES = 200e6;        // memory the kept pieces may take together (~200 MB)
+export const CACHE_ENTRIES = 64;             // and never more pieces than this
 export const WEIGHT_CACHE_CELLS = 2e6;       // binomial weights kept by the pool formulas (~16 MB)
 export const PARALLEL_MIN_EDGES = 150000;    // smaller chains run on one core (syncing costs more)
 export const THREAD_TRIAL_PULLS = 24;        // pulls timed on all cores, then on one, before choosing

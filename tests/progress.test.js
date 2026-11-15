@@ -18,7 +18,7 @@ function phasesOf(q) {
 for (const [label, q, method] of [
   ["layered with budget", { ...preset("kaleido2"), goal: [{ path: "0,0", type: "distinct", k: 19, copies: 4 }, { path: "0,1", type: "distinct", k: 5, copies: 4 }], budget: 8000 }, "layered"],
   ["joint with budget", { ...preset("anniversary"), method: "joint", budget: 300 }, "joint"],
-  ["split with budget", { tree: [{ name: "SSR", p: 0.02, pity: 40, children: [{ name: "pool", p: 1, count: 15 }] }, { name: "SR", p: 0.1, pity: 8 }, { name: "R", p: "rest" }], goal: [{ path: "0,0", type: "distinct", k: 15, copies: 3 }], method: "split", budget: 3000 }, "split"],
+  ["split with budget", { tree: [{ name: "SSR", p: 0.02, pity: 40, children: [{ name: "pool", p: 1, count: 4 }] }, { name: "SR", p: 0.1, pity: 8 }, { name: "R", p: "rest" }], goal: [{ path: "0,0", type: "distinct", k: 4, copies: 2 }], method: "split", budget: 400 }, "split"],
 ]) {
   test(`progress: ${label}`, () => {
     const { r, msgs } = phasesOf(q);

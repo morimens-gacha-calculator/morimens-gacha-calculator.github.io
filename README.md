@@ -39,7 +39,7 @@ test fails) and on pull requests.
 | `src/engine/joint.js`, `split.js`, `layered.js` | The three exact methods (see the top of each file) |
 | `src/engine/pool-formulas.js`, `pools.js` | Exact formulas for which items a pool gives |
 | `src/engine/renewal.js` | FFT and "SSRs by pull" helpers of the layered method |
-| `src/engine/chain-step.js`, `step-thread*.js`, `*.wat` | Fast chain stepping (WebAssembly, several cores) |
+| `src/engine/chain-step.js`, `step-thread*.js`, `*.wat` | Fast chain stepping (WebAssembly, several cores). After editing a `.wat` file, run `npm run build:wasm` (it regenerates `wasm-kernels.js`; `npm test` fails if you forget) |
 | `src/engine/cache.js` | Reusing pieces between calculations |
 | `src/engine/settings.js` | Every accuracy setting, limit and speed trade-off, with the reason for its value |
 | `src/engine/engine.worker.js` | Runs the engine in a Web Worker |

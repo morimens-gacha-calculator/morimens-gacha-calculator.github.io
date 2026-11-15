@@ -173,12 +173,12 @@ function SettingsPanel({ state, update }) {
       <SettingRow label={L.maxPulls}>
         {s.noLimits
           ? <input type="text" className="custom-input" value={L.unlimited} disabled readOnly />
-          : <NumberInput className="custom-input" min={1} fallback={1000000} value={s.maxPulls} onChange={(v) => set("maxPulls", v)} />}
+          : <NumberInput className="custom-input" min={1} fallback={DEFAULT_SETTINGS.maxPulls} value={s.maxPulls} onChange={(v) => set("maxPulls", v)} />}
       </SettingRow>
       <SettingRow label={L.maxStates}>
         {s.noLimits
           ? <input type="text" className="custom-input" value={L.unlimited} disabled readOnly />
-          : <NumberInput className="custom-input" min={1000} fallback={1000000} value={s.maxStates} onChange={(v) => set("maxStates", v)} />}
+          : <NumberInput className="custom-input" min={1000} fallback={DEFAULT_SETTINGS.maxStates} value={s.maxStates} onChange={(v) => set("maxStates", v)} />}
       </SettingRow>
       <SettingRow label={L.method}>
         <select className="select" value={s.method} onChange={(e) => set("method", e.target.value)}>

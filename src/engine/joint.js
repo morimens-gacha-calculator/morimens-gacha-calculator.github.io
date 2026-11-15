@@ -36,14 +36,14 @@ export function solveJoint(orig, opts, eps, maxPulls, onProgress) {
 export function budgetReport(tree, goal, opts, B) {
   if (!(Number.isInteger(B) && B >= 0)) throw new EngineError("badBudget", {}, "budget must be a whole number of pulls ≥ 0");
   const c = compile(tree, goal, { ...opts, absorb: false });
-  const { N, states, reqs } = c;
-  const prog = reqs.map((r) => Int32Array.from(states, (s, k) => (k === 0 ? 0 : c.progress(r, s))));
+  const { N, reqs } = c;
+  const prog = reqs.map((r) => Int32Array.from({ length: N }, (_, k) => (k === 0 ? 0 : c.progress(r, c.stateAt(k)))));
   const expectedByPull = reqs.map(() => new Float64Array(B + 1));
   const goalByPull = new Float64Array(B + 1);
 
   const st = makeStepper(c);
   const wProg = prog.map((p) => st.weights(Float64Array.from(p)));
-  const wDone = st.weights(Float64Array.from(states, (s, k) => (k > 0 && c.isDone(s) ? 1 : 0)));
+  const wDone = st.weights(Float64Array.from({ length: N }, (_, k) => (k > 0 && c.isDone(c.stateAt(k)) ? 1 : 0)));
   const record = (t) => {
     for (let r = 0; r < reqs.length; r++) expectedByPull[r][t] = st.dot(wProg[r]);
     goalByPull[t] = st.dot(wDone);

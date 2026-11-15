@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { freshState, newId, presets, reqLabel, withPresetNames, setPrecision } from "./model.js";
+import { freshState, newId, presets, reqLabel, withPresetNames, setPrecision, DEFAULT_SETTINGS } from "./model.js";
 import { useEngine } from "./useEngine.js";
 import { useCompare } from "./useCompare.js";
 import { I18nContext, LOCALES, browserLocale, setLocale } from "./i18n/index.js";
@@ -57,8 +57,13 @@ export default function App() {
   const [state, setState] = useState(() => {
     const s = load(STORE_KEY, (v) => v && v.banner && Array.isArray(v.goal));
     if (!s) return freshState(DEFAULT_PRESET);
+    // settings saved by an older version: fill in new ones; the old default state limit (1 million,
+    // before chain building got leaner) moves up to the current default
+    const settings = { ...DEFAULT_SETTINGS, ...s.settings };
+    if (Number(s.settings?.maxStates) === 1e6) settings.maxStates = DEFAULT_SETTINGS.maxStates;
+    const restored = { ...s, settings };
     // a preset that no longer exists becomes your custom banner; presets get names in this language
-    return presets()[s.preset] ? withPresetNames(s) : { ...s, preset: "custom" };
+    return presets()[s.preset] ? withPresetNames(restored) : { ...restored, preset: "custom" };
   });
   const [tabRequest, setTabRequest] = useState(null);
   const [undoState, setUndoState] = useState(null); // the setup from just before a Reset

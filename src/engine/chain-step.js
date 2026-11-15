@@ -12,12 +12,12 @@
 // split across cores: helper threads each compute a range of states (chain-pull.wat).
 // st.close() releases the helpers; call it when done stepping.
 //
-// Source of the kernel: chain-step.wat (compiled with wabt; base64 below).
+// Kernels: chain-step.wat / chain-pull.wat, compiled into wasm-kernels.js by `npm run build:wasm`.
 import { HELPER_IDLE_MS, HELPER_START_MS, PARALLEL_MIN_EDGES, THREAD_TRIAL_PULLS } from "./settings.js";
 import { pullKernel, CTRL, CTRL_WORDS, MAX_WEIGHTS } from "./step-thread-core.js";
+import { STEP_KERNEL_B64 as KERNEL_B64 } from "./wasm-kernels.js";
 import { internalError } from "./errors.js";
 
-const KERNEL_B64 = "AGFzbQEAAAABEgJgBn9/f39/fwF8YAN/f38BfAMDAgABBQMBAAEHFAMDbWVtAgAEc3RlcAAAA2RvdAABCskCAocCBQN/AXwBfwF8AX8gBCEKIAQgBUEDdGohDAJAA0AgCiAMTw0BIApEAAAAAAAAAAA5AwAgCkEIaiEKDAALC0EBIQYCQANAIAYgBU8NASADIAZBA3RqKwMAIQkgCUQAAAAAAAAAAGIEQCAAIAZBAnRqKAIAIQcgACAGQQFqQQJ0aigCACEIAkADQCAHIAhPDQEgBCABIAdBAnRqKAIAQQN0aiEKIAogCisDACAJIAIgB0EDdGorAwCioDkDACAHQQFqIQcMAAsLCyAGQQFqIQYMAAsLRAAAAAAAAAAAIQsgBEEIaiEKAkADQCAKIAxPDQEgCyAKKwMAoCELIApBCGohCgwACwsgCws+AgF/AXxBASEDAkADQCADIAJPDQEgBCAAIANBA3RqKwMAIAEgA0EDdGorAwCioCEEIANBAWohAwwACwsgBAs=";
 
 let compiled; // undefined = not tried, null = unavailable
 const now = () => (typeof performance !== "undefined" ? performance.now() : Date.now());

@@ -50,8 +50,8 @@ export function poolByChain(n, rows, owned, goalMode, H) {
   const E = bc.reqs.map(() => []), G = [];
   cur = new Float64Array(bc.N); cur[bc.startIndex] = 1;
   for (let h = 0; h <= H; h++) {
-    bc.reqs.forEach((r, i) => { let e = 0; for (let k = 1; k < bc.N; k++) if (cur[k]) e += cur[k] * Math.min(bc.progress(r, bc.states[k]), r.max); E[i].push(e); });
-    let g = 0; for (let k = 1; k < bc.N; k++) if (cur[k] && !bc.isDone(bc.states[k])) g += cur[k];
+    bc.reqs.forEach((r, i) => { let e = 0; for (let k = 1; k < bc.N; k++) if (cur[k]) e += cur[k] * Math.min(bc.progress(r, bc.stateAt(k)), r.max); E[i].push(e); });
+    let g = 0; for (let k = 1; k < bc.N; k++) if (cur[k] && !bc.isDone(bc.stateAt(k))) g += cur[k];
     G.push(g);
     cur = step(bc, cur);
   }

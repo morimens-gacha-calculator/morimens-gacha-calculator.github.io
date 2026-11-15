@@ -11,7 +11,7 @@
 // never write the same place; partial sums go to a shared Float64 area.
 import { HELPER_IDLE_MS } from "./settings.js";
 
-export const PULL_B64 = "AGFzbQEAAAABDAFgB39/f39/f38BfAIPAQNlbnYDbWVtAgMBgIAEAwIBAAcIAQRwdWxsAAAKpAEBoQECA38CfCAFIQcgACAFQQJ0aigCACEIAkADQCAHIAZPDQEgACAHQQFqQQJ0aigCACEJRAAAAAAAAAAAIQoCQANAIAggCU8NASAKIAMgASAIQQJ0aigCAEEDdGorAwAgAiAIQQN0aisDAKKgIQogCEEBaiEIDAALCyAEIAdBA3RqIAo5AwAgB0EARwRAIAsgCqAhCwsgB0EBaiEHDAALCyALCw==";
+import { PULL_KERNEL_B64 as PULL_B64 } from "./wasm-kernels.js";
 export const CTRL = { JOB: 0, GEN: 1, DONE: 2, READY: 3, STOP: 4, RS: 5, SRC: 6, PROB: 7, A: 8, B: 9, N: 10, NW: 11, SUMS: 12, W0: 16, RANGE0: 32 };
 export const MAX_WEIGHTS = 16;
 export const CTRL_WORDS = 32 + 2 * 64;

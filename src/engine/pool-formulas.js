@@ -121,6 +121,34 @@ function convolve(A, B, H, P) {
 
 const gcd = (a, b) => (b ? gcd(b, a % b) : a);
 
+// Repeated squares and powers of an item's factor, kept for the length of one top-level call
+// (poolNotMet, poolBudget): its many terms share them. Exactly the same convolutions in the
+// same order as power(), so the same numbers.
+let memo = null;
+function withMemo(fn) {
+  const outer = memo;
+  memo = outer ?? new Map();
+  try { return fn(); } finally { memo = outer; }
+}
+function classPower(cls, m, H, points, P) {
+  if (!memo) return power(itemBlock(cls, H, points, P), m, H, P);
+  const bk = `${cls.lo}|${cls.hi}|${cls.marks.join(",")}|${H}|${points.key}`;
+  const rk = `${bk}#${m}`;
+  if (memo.has(rk)) return memo.get(rk);
+  let chain = memo.get(bk);
+  if (!chain) { chain = [itemBlock(cls, H, points, P)]; memo.set(bk, chain); }
+  let result = null, i = 0;
+  for (let mm = m; mm > 0;) {
+    if (mm & 1) result = result ? convolve(result, chain[i], H, P) : chain[i];
+    mm >>= 1;
+    i++;
+    if (mm && !chain[i]) chain[i] = convolve(chain[i - 1], chain[i - 1], H, P);
+  }
+  memo.set(rk, result);
+  return result;
+}
+const cloneBlock = (b) => ({ size: b.size, re: b.re.map((a) => a.slice()), im: b.im ? b.im.map((a) => a.slice()) : null });
+
 function power(base, m, H, P) {
   let result = null, sq = base;
   while (m > 0) {
@@ -161,7 +189,7 @@ function evaluate(sys, H) {
   const dims = markers.map((m) => m.set.length + 1);
   const P = dims.reduce((a, b) => a * b, 1);
   // marker points: y_d = exp(2πi ℓ_d / dims_d)
-  const points = { complex: P > 1, y: [] };
+  const points = { complex: P > 1, y: [], key: dims.join("x") }; // same dims → same points
   for (let q = 0; q < P; q++) {
     let rem = q;
     const ys = [];
@@ -203,10 +231,12 @@ function evaluate(sys, H) {
 
   const evalNode = (node) => {
     const blocks = [];
-    for (const cls of node.classes.values()) blocks.push(power(itemBlock(cls, H, points, P), cls.count, H, P));
+    for (const cls of node.classes.values()) blocks.push(classPower(cls, cls.count, H, points, P));
     for (const ch of node.children) blocks.push(evalNode(ch));
     let acc = blocks[0];
     for (let b = 1; b < blocks.length; b++) acc = convolve(acc, blocks[b], H, P);
+    // a lone block may be a kept power: change a copy
+    if ((node.lo > 0 || node.hi < Infinity) && blocks.length === 1) acc = cloneBlock(acc);
     if (node.lo > 0 || node.hi < Infinity)
       for (let q = 0; q < P; q++)
         for (let h = 0; h <= H; h++) if (h < node.lo || h >= node.hi) { acc.re[q][h] = 0; if (acc.im) acc.im[q][h] = 0; }
@@ -434,6 +464,9 @@ function hitsBound(plan, tol, want) {
 
 // S[h] = P(goal not met after h hits), h = 0…H, with S[H] < tol
 export function poolNotMet(plan, tol, Hmax = MAX_POOL_HITS) {
+  return withMemo(() => poolNotMetImpl(plan, tol, Hmax));
+}
+function poolNotMetImpl(plan, tol, Hmax) {
   if (plan.guaranteedAt != null) {
     // totals over the whole pool: the count is exactly h
     return Float64Array.from({ length: plan.guaranteedAt + 1 }, (_, h) => (h >= plan.guaranteedAt ? 0 : 1));
@@ -458,6 +491,9 @@ export function poolNotMet(plan, tol, Hmax = MAX_POOL_HITS) {
 // Budget pieces per number of hits h ≤ min(Hcap, maxed point) (knownNotMet: poolNotMet's result):
 //   D[row][h] = distribution of the row's progress, E[row][h] its mean, G[h] = P(not met)
 export function poolBudget(plan, Hcap, knownNotMet = null) {
+  return withMemo(() => poolBudgetImpl(plan, Hcap, knownNotMet));
+}
+function poolBudgetImpl(plan, Hcap, knownNotMet) {
   const { rows, n, own } = plan;
   // up to where every row is at its maximum progress
   let H = Hcap;

@@ -49,8 +49,8 @@ export function poolChainNotMet(pc, tol) {
 
 export function poolChainBudget(pc, Hcap) {
   const mc = compile(pc.miniTree, pc.miniGoal, { ...pc.miniOpts, absorb: false });
-  const prog = mc.reqs.map((r) => Int32Array.from(mc.states, (s, k) => (k === 0 ? 0 : Math.min(mc.progress(r, s), r.max))));
-  const maxed = Uint8Array.from(mc.states, (s, k) => (k > 0 && mc.reqs.every((r, i) => prog[i][k] >= r.max) ? 1 : 0));
+  const prog = mc.reqs.map((r) => Int32Array.from({ length: mc.N }, (_, k) => (k === 0 ? 0 : Math.min(mc.progress(r, mc.stateAt(k)), r.max))));
+  const maxed = Uint8Array.from({ length: mc.N }, (_, k) => (k > 0 && mc.reqs.every((r, i) => prog[i][k] >= r.max) ? 1 : 0));
   const D = mc.reqs.map(() => []), E = mc.reqs.map(() => []), G = [];
   let cur = new Float64Array(mc.N), next = new Float64Array(mc.N);
   cur[mc.startIndex] = 1;
@@ -63,7 +63,7 @@ export function poolChainBudget(pc, Hcap) {
       D[i].push(d); E[i].push(e);
     });
     let g = 0, notMaxed = 0;
-    for (let k = 1; k < mc.N; k++) if (cur[k]) { if (!mc.isDone(mc.states[k])) g += cur[k]; if (!maxed[k]) notMaxed += cur[k]; }
+    for (let k = 1; k < mc.N; k++) if (cur[k]) { if (!mc.isDone(mc.stateAt(k))) g += cur[k]; if (!maxed[k]) notMaxed += cur[k]; }
     G.push(g);
     if (notMaxed < NEGLIGIBLE) break;
     advance(cur, next, mc.N, mc.rowStart, mc.col, mc.prob);

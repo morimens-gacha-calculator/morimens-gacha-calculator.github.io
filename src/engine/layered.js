@@ -20,7 +20,7 @@ import { MAX_GROUPS, goalList, groupRows, ownedFor, rowsOf } from "./goal.js";
 import { addScaled, makeReport } from "./report.js";
 import { chainSizeEstimate, poolBudget, poolNotMet } from "./pool-formulas.js";
 import { poolChain, poolChainBudget, poolChainNotMet, poolPlanFor } from "./pools.js";
-import { curvesByPull, eventsByPull, fft } from "./renewal.js";
+import { curvesByPull, eventsByPull, fft, hornerHalf } from "./renewal.js";
 import { canonTree, findAlt, nodeAtCanon, normaliseNode, pathKey, resolvePath } from "./tree.js";
 
 export function planLayered(tree, goal, opts, eps, force) {
@@ -221,26 +221,12 @@ export function solveLayered(plan, eps, maxPulls, onProgress) {
     gap1.forEach((v, i) => { hr[i] = v; });
     fft(gr, gi, false);
     fft(hr, hi, false);
-    const outR = new Float64Array(L), outI = new Float64Array(L);
+    // Σ_{m≥1} p_m · G1 · G^(m−1) + p_0 by Horner, half the frequencies (real inputs: the rest mirror)
     const pMa = Float64Array.from(pM);
-    // inputs are real, so the value at L − z is the conjugate of the value at z: do half
-    for (let z = 0; z <= L / 2; z++) {
-      // Σ_{m≥1} p_m · G1 · G^(m-1), by Horner
-      let ar = 0, ai = 0;
-      const xr = gr[z], xi = gi[z];
-      for (let m = Mmax; m >= 1; m--) {
-        const nr = ar * xr - ai * xi + pMa[m];
-        ai = ar * xi + ai * xr;
-        ar = nr;
-      }
-      outR[z] = ar * hr[z] - ai * hi[z] + pMa[0];
-      outI[z] = ar * hi[z] + ai * hr[z];
-      if (z > 0 && z < L / 2) { outR[L - z] = outR[z]; outI[L - z] = -outI[z]; }
-      if ((z & 1023) === 0) {
-        stopIfCancelled();
-        if (onProgress) onProgress({ phase: "combine", done: z, total: L / 2 });
-      }
-    }
+    const { outR, outI } = hornerHalf(pMa, Mmax, pMa[0], { re: gr, im: gi }, { re: hr, im: hi }, L, (z) => {
+      stopIfCancelled();
+      if (onProgress) onProgress({ phase: "combine", done: z, total: L / 2 });
+    });
     fft(outR, outI, true);
     pmfT = Array.from(outR.subarray(0, len), (v) => (v > 0 ? v : 0));
   }
