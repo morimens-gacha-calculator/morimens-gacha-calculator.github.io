@@ -185,6 +185,7 @@ function SettingsPanel({ state, update }) {
           <option value="auto">{L.methodAuto}</option>
           <option value="joint">{L.methodJoint}</option>
           <option value="split">{L.methodSplit}</option>
+          <option value="layered">{L.methodLayered}</option>
         </select>
       </SettingRow>
     </div>

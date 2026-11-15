@@ -151,6 +151,7 @@ export default {
     methodAuto: "Automatic",
     methodJoint: "Joint",
     methodSplit: "Split (one pool only)",
+    methodLayered: "Layered (by SSR, up to two pools)",
   },
 
   plan: {
