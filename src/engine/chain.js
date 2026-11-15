@@ -24,6 +24,8 @@ export function compile(treeRaw, goalRaw, { start: startRaw = {}, goalMode = "al
         let cap = a.pity || Infinity;
         if (a.soft) cap = Math.min(cap, a.soft.start - 1 + Math.ceil((1 - a.p) / a.soft.step));
         a.cap = Math.max(1, cap);
+        if (a.pityResetBy === "above") node.resetBelow = true;
+        if (a.pity && a.onPreempt === "lose") node.losesDue = true;
       }
       if (a.child) assign(a.child);
     }
@@ -209,6 +211,15 @@ export function compile(treeRaw, goalRaw, { start: startRaw = {}, goalMode = "al
         const lab = a.hitLabel || label;
         const t = s.slice();
         if (a.cv >= 0) t[a.cv] = 0;
+        // outcomes listed below this one: counters that also restart on anything above them,
+        // and guarantees that were due this pull but got taken by this outcome ("lose")
+        if (node.resetBelow || node.losesDue) {
+          for (let j = i + 1; j < node.alts.length; j++) {
+            const b = node.alts[j];
+            if (b.cv < 0) continue;
+            if (b.pityResetBy === "above" || (b.onPreempt === "lose" && b.pity && s[b.cv] >= b.pity)) t[b.cv] = 0;
+          }
+        }
         if (node.streak) {
           const n1 = node.streak + 1, v = t[node.sv];
           const last = Math.floor(v / n1) - 1, run = v % n1;

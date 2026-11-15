@@ -42,6 +42,8 @@ export function normaliseNode(raw, path, names = []) {
       rest: p === "rest",
       pity: o.pity || 0,
       pityYields: !!o.pityYields,
+      pityResetBy: o.pityResetBy === "above" ? "above" : "self",
+      onPreempt: o.onPreempt === "lose" ? "lose" : "carry",
       soft: o.soft && o.soft.step > 0 ? o.soft : null,
       count,
       itemNames: Array.isArray(o.items) ? o.items.map(String) : null,

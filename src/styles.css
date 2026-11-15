@@ -511,3 +511,15 @@ input[type="number"]::-webkit-outer-spin-button, input[type="number"]::-webkit-i
 .menu-item:hover:not(:disabled), .menu-item:focus-visible { background: var(--blue-soft); }
 .menu-item:disabled { color: var(--ink-2); cursor: default; }
 .chip-tab:disabled { opacity: 0.5; cursor: default; }
+
+/* Banner editor: ↑ ↓ to change an outcome's priority */
+.tree-alt { position: relative; }
+.alt-order { position: absolute; top: 8px; right: 8px; display: flex; gap: 4px; }
+.order-btn { width: 28px; height: 26px; border: 1px solid var(--line); border-radius: 7px; background: var(--field); color: var(--ink-2); cursor: pointer; font-size: 14px; line-height: 1; }
+.order-btn:hover:not(:disabled), .order-btn:focus-visible { border-color: var(--blue); color: var(--ink); }
+.order-btn:disabled { opacity: 0.35; cursor: default; }
+.tree-alt > .alt-grid { padding-right: 66px; }
+.order-hint { margin: 0 0 8px; }
+.pity-rules { display: flex; flex-wrap: wrap; gap: 8px 12px; width: 100%; }
+.pity-rules .field { flex: 1 1 220px; min-width: 0; }
+.pity-rules .select { width: 100%; }

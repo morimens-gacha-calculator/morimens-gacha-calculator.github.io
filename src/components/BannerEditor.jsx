@@ -31,6 +31,24 @@ export default function BannerEditor({ state, update }) {
     altIn(t, key).children = null;
     return { state: remapKeys(s, (k) => (k.startsWith(key + ",") ? null : k)) };
   });
+  // Move an outcome up or down among its siblings. The order is the priority: when two hard
+  // pities are due on the same pull, the higher one wins. Pity, memory and plan rows follow it.
+  const move = (key, dir) => edit((t, s) => {
+    const p = pathOf(key), parent = keyOf(p.slice(0, -1)), i = p[p.length - 1], j = i + dir, depth = p.length - 1;
+    const n = nodeIn(t, parent);
+    if (j < 0 || j >= n.alts.length) return undefined;
+    [n.alts[i], n.alts[j]] = [n.alts[j], n.alts[i]];
+    const next = remapKeys(s, (k) => {
+      const q = pathOf(k);
+      if (q.length <= depth || keyOf(q.slice(0, depth)) !== parent) return k;
+      if (q[depth] === i) q[depth] = j; else if (q[depth] === j) q[depth] = i;
+      return keyOf(q);
+    });
+    // memory remembers this group's last outcome by its position
+    const mem = next.start.streak?.[parent];
+    if (mem) next.start = { ...next.start, streak: { ...next.start.streak, [parent]: [mem[0] === i ? j : mem[0] === j ? i : mem[0], mem[1]] } };
+    return { state: next };
+  });
   const remove = (key) => edit((t, s) => {
     const p = pathOf(key), parent = keyOf(p.slice(0, -1)), idx = p[p.length - 1], depth = p.length - 1;
     const n = nodeIn(t, parent);
@@ -65,9 +83,11 @@ export default function BannerEditor({ state, update }) {
     return (
       <div className={`tree-node ${key === "" ? "is-root" : ""}`}>
         {title && <div className="tree-node-title">{title}</div>}
+        {key === "" && <p className="muted small order-hint">{B.orderHint}</p>}
         {n.alts.map((a, i) => {
           const k = key === "" ? `${i}` : `${key},${i}`;
-          return <AltRow key={k} a={a} k={k} canRemove={n.alts.length > 1} setField={setField} split={split} unsplit={unsplit} remove={remove} renderNode={renderNode} />;
+          return <AltRow key={k} a={a} k={k} canRemove={n.alts.length > 1} canUp={i > 0} canDown={i < n.alts.length - 1} move={move}
+            setField={setField} split={split} unsplit={unsplit} remove={remove} renderNode={renderNode} />;
         })}
         <div className="tree-foot">
           <span className={`chip ${sum.ok ? "chip--ok" : "chip--err"}`}>{sum.text}</span>
@@ -99,13 +119,17 @@ export default function BannerEditor({ state, update }) {
 
 function toEngineTreeSafe(t) { try { return toEngineTree(t); } catch { return null; } }
 
-function AltRow({ a, k, canRemove, setField, split, unsplit, remove, renderNode }) {
+function AltRow({ a, k, canRemove, canUp, canDown, move, setField, split, unsplit, remove, renderNode }) {
   const B = useT().banner;
   const isLeaf = !a.children;
   const pool = isLeaf && num(a.count, 1) > 1;
   const id = (f) => `alt-${k.replace(/,/g, "-")}-${f}`;
   return (
     <div className="tree-alt">
+      <div className="alt-order" role="group" aria-label={B.orderOf(a.name)}>
+        <button type="button" className="order-btn" disabled={!canUp} onClick={() => move(k, -1)} aria-label={B.moveUp(a.name)} title={B.moveUpTitle}>↑</button>
+        <button type="button" className="order-btn" disabled={!canDown} onClick={() => move(k, 1)} aria-label={B.moveDown(a.name)} title={B.moveDownTitle}>↓</button>
+      </div>
       <div className="alt-grid">
         <label className="field"><span className="field-label">{B.name}</span>
           <input id={id("name")} type="text" className="custom-input" value={a.name} onChange={(e) => setField(k, "name", e.target.value)} />
@@ -139,6 +163,22 @@ function AltRow({ a, k, canRemove, setField, split, unsplit, remove, renderNode 
           <input type="checkbox" checked={!!a.pityYields} onChange={(e) => setField(k, "pityYields", e.target.checked)} />
           {B.pityYields}
         </label>
+        {num(a.pity) > 0 && (
+          <div className="pity-rules">
+            <label className="field"><span className="field-label">{B.resetBy}</span>
+              <select id={id("resetBy")} className="select" value={a.pityResetBy ?? "self"} onChange={(e) => setField(k, "pityResetBy", e.target.value)}>
+                <option value="self">{B.resetBySelf}</option>
+                <option value="above">{B.resetByAbove}</option>
+              </select>
+            </label>
+            <label className="field"><span className="field-label">{B.preempt}</span>
+              <select id={id("preempt")} className="select" value={a.onPreempt ?? "carry"} onChange={(e) => setField(k, "onPreempt", e.target.value)}>
+                <option value="carry">{B.preemptCarry}</option>
+                <option value="lose">{B.preemptLose}</option>
+              </select>
+            </label>
+          </div>
+        )}
         {isLeaf
           ? <button type="button" className="btn btn--small" onClick={() => split(k)}>{B.split}</button>
           : <button type="button" className="btn btn--small" onClick={() => unsplit(k)}>{B.unsplit}</button>}

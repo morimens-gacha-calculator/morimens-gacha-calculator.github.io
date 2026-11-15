@@ -12,6 +12,10 @@
 //   pityYields  true: when this pity triggers, alternatives listed *before* it still
 //               roll at their normal rates and this one takes the rest (e.g. a 4★ pity
 //               pull can still become a 5★). Default false = forced outright.
+//   pityResetBy "self" (default): only this outcome restarts its counter; "above": this one or
+//               any listed above it in the same group does ("SR or better every 10 pulls").
+//   onPreempt   "carry" (default): if an outcome above takes the guaranteed pull, the guarantee
+//               moves to the next visit; "lose": it's used up and the counter restarts.
 //   soft        { start, step }: from the start-th visit on, rate = p + step·(visit − start + 1)
 //               ("rest" shrinks to make room; without it, the other plain alternatives do)
 //   count       n items at equal odds (a pool), e.g. 4 characters. Tuple form: put the

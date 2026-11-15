@@ -11,7 +11,7 @@ let uid = 0;
 export const newId = () => `r${Date.now().toString(36)}${(uid++).toString(36)}`;
 
 export const leaf = (name, p, extra = {}) => ({
-  name, p, pity: "", pityYields: false, softStart: "", softStep: "", count: 1, items: "", children: null, ...extra,
+  name, p, pity: "", pityYields: false, pityResetBy: "self", onPreempt: "carry", softStart: "", softStep: "", count: 1, items: "", children: null, ...extra,
 });
 export const node = (alts, streak = 0) => ({ streak, alts });
 
@@ -209,6 +209,8 @@ export function toEngineTree(n) {
     if (typeof o.p === "number" && !Number.isFinite(o.p)) throw new Error(getStrings().errors.badChance(a.name, a.p));
     if (num(a.pity) > 0) o.pity = Math.floor(num(a.pity));
     if (a.pityYields) o.pityYields = true;
+    if (a.pityResetBy === "above") o.pityResetBy = "above";
+    if (a.onPreempt === "lose") o.onPreempt = "lose";
     const step = parseChance(a.softStep);
     if (num(a.softStart) > 0 && typeof step === "number" && step > 0) o.soft = { start: Math.floor(num(a.softStart)), step };
     if (a.children) o.children = toEngineTree(a.children);
@@ -228,6 +230,7 @@ export function fromEngineTree(raw) {
     if (typeof ch === "number") { count = ch; ch = null; }
     return leaf(o.name ?? `#${i + 1}`, String(o.p), {
       pity: o.pity || "", pityYields: !!o.pityYields,
+      pityResetBy: o.pityResetBy === "above" ? "above" : "self", onPreempt: o.onPreempt === "lose" ? "lose" : "carry",
       softStart: o.soft ? o.soft.start : "", softStep: o.soft ? String(o.soft.step) : "",
       count, items: Array.isArray(o.items) ? o.items.join(", ") : "", children: ch ? fromEngineTree(ch) : null,
     });
