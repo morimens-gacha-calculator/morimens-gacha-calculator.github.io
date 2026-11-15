@@ -132,6 +132,9 @@ export default {
   },
 
   settings: {
+    groupDisplay: "Display",
+    groupCalc: "Calculation",
+    percentilesHint: "Comma-separated, for the Pulls needed table and chart lines.",
     decimals: "Decimal places",
     decimalsHint: "For chances and averages. Pull counts are always whole numbers.",
     percentiles: "Percentiles to show",

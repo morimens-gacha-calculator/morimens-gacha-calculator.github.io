@@ -134,6 +134,9 @@ export default {
   },
 
   settings: {
+    groupDisplay: "Відображення",
+    groupCalc: "Розрахунок",
+    percentilesHint: "Через кому, для таблиці «Скільки потрібно круток» і ліній графіка.",
     decimals: "Знаків після коми",
     decimalsHint: "Для шансів і середніх значень. Кількість круток завжди ціла.",
     percentiles: "Які процентилі показувати",
@@ -142,7 +145,7 @@ export default {
     maxPulls: "Максимум круток у розрахунку",
     maxStates: "Максимум станів (ліміт пам'яті)",
     method: "Метод",
-    methodAuto: "Автоматично",
+    methodAuto: "Авто",
     methodJoint: "Спільний",
     methodSplit: "Роздільний (лише один пул)",
   },

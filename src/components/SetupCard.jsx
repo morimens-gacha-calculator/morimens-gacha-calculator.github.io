@@ -54,7 +54,7 @@ export default function SetupCard({ state, update, setState, tabRequest }) {
         ))}
         <HelpButton label={current.label} text={current.help} />
       </div>
-      <div className="tab-content" role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
+      <div className={`tab-content is-${tab}`} role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
         {tab === "pity" && <PityPanel state={state} update={update} />}
         {tab === "banner" && <BannerEditor state={state} update={update} />}
         {tab === "settings" && <SettingsPanel state={state} update={update} />}
@@ -134,42 +134,49 @@ function PityPanel({ state, update }) {
   );
 }
 
+// One setting per row: name and hint on the left, a control of fixed width on the right
+function SettingRow({ label, hint, wide, children }) {
+  return (
+    <label className={`setting-row ${wide ? "is-wide" : ""}`}>
+      <span className="setting-text">
+        <span className="setting-label">{label}</span>
+        {hint && <span className="setting-hint">{hint}</span>}
+      </span>
+      <span className="setting-control">{children}</span>
+    </label>
+  );
+}
+
 function SettingsPanel({ state, update }) {
   const L = useT().settings;
   const s = state.settings;
   const set = (f, v) => update((st) => ({ ...st, settings: { ...st.settings, [f]: v } }));
   return (
-    <div className="form-grid">
-      <label className="field">
-        <span className="field-label">{L.decimals}</span>
+    <div className="settings-list">
+      <div className="settings-group">{L.groupDisplay}</div>
+      <SettingRow label={L.decimals} hint={L.decimalsHint}>
         <NumberInput className="custom-input" min={0} max={6} fallback={2} value={s.decimals ?? 2} onChange={(v) => set("decimals", v)} />
-        <span className="muted small">{L.decimalsHint}</span>
-      </label>
-      <label className="field">
-        <span className="field-label">{L.percentiles}</span>
+      </SettingRow>
+      <SettingRow label={L.percentiles} hint={L.percentilesHint} wide>
         <input type="text" className="custom-input" value={s.pct} onChange={(e) => set("pct", e.target.value)} />
-      </label>
-      <label className="field">
-        <span className="field-label">{L.eps}</span>
+      </SettingRow>
+      <div className="settings-group">{L.groupCalc}</div>
+      <SettingRow label={L.eps} hint={L.epsHint}>
         <input type="text" className="custom-input" value={s.eps} onChange={(e) => set("eps", e.target.value)} />
-        <span className="muted small">{L.epsHint}</span>
-      </label>
-      <label className="field">
-        <span className="field-label">{L.maxPulls}</span>
+      </SettingRow>
+      <SettingRow label={L.maxPulls}>
         <NumberInput className="custom-input" min={1} fallback={1000000} value={s.maxPulls} onChange={(v) => set("maxPulls", v)} />
-      </label>
-      <label className="field">
-        <span className="field-label">{L.maxStates}</span>
+      </SettingRow>
+      <SettingRow label={L.maxStates}>
         <NumberInput className="custom-input" min={1000} fallback={1000000} value={s.maxStates} onChange={(v) => set("maxStates", v)} />
-      </label>
-      <label className="field">
-        <span className="field-label">{L.method}</span>
+      </SettingRow>
+      <SettingRow label={L.method}>
         <select className="select" value={s.method} onChange={(e) => set("method", e.target.value)}>
           <option value="auto">{L.methodAuto}</option>
           <option value="joint">{L.methodJoint}</option>
           <option value="split">{L.methodSplit}</option>
         </select>
-      </label>
+      </SettingRow>
     </div>
   );
 }

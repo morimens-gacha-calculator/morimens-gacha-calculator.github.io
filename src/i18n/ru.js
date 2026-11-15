@@ -133,6 +133,9 @@ export default {
   },
 
   settings: {
+    groupDisplay: "Отображение",
+    groupCalc: "Расчёт",
+    percentilesHint: "Через запятую, для таблицы «Сколько нужно круток» и линий графика.",
     decimals: "Знаков после запятой",
     decimalsHint: "Для шансов и средних значений. Число круток всегда целое.",
     percentiles: "Какие процентили показывать",
@@ -141,7 +144,7 @@ export default {
     maxPulls: "Максимум круток в расчёте",
     maxStates: "Максимум состояний (лимит памяти)",
     method: "Метод",
-    methodAuto: "Автоматически",
+    methodAuto: "Авто",
     methodJoint: "Совместный",
     methodSplit: "Раздельный (только один пул)",
   },

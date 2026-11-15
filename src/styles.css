@@ -450,3 +450,30 @@ tr.is-met .progress-bar { background: var(--blue); }
 .plan-buttons .btn { height: 46px; padding: 0 12px; font-weight: 600; border-radius: 10px; margin: 0; }
 .plan-buttons .btn--calculate { margin-left: 0; }
 @media (max-width: 640px) { .plan-buttons .btn { font-size: 13.5px; line-height: 1.15; padding: 0 8px; } }
+
+/* ── Settings: one row per setting, fixed-width controls on the right ── */
+.settings-list { display: grid; }
+.settings-group { font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); padding: 14px 0 6px; }
+.settings-group:first-child { padding-top: 0; }
+.setting-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.setting-row:last-child { border-bottom: none; }
+.setting-text { display: grid; gap: 2px; min-width: 0; }
+.setting-label { font-weight: 500; color: var(--ink); }
+.setting-hint { font-size: 12.5px; color: var(--muted); line-height: 1.4; }
+.setting-control { flex: 0 0 250px; }
+.setting-control .custom-input, .setting-control .select { width: 100%; height: 38px; }
+@media (max-width: 640px) { .setting-control { flex-basis: 128px; } }
+
+/* No spinner arrows on number fields anywhere */
+input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
+input[type="number"]::-webkit-outer-spin-button, input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+
+/* Only the banner editor can get long enough to need its own scroll */
+.tab-content.is-pity, .tab-content.is-settings { max-height: none; }
+@media (max-width: 640px) {
+  .setting-control { flex-basis: 150px; }
+  .setting-row.is-wide { flex-direction: column; align-items: stretch; gap: 8px; }
+  .setting-row.is-wide .setting-control { flex-basis: auto; }
+  .data-buttons { flex-wrap: nowrap; gap: 6px; }
+  .data-buttons .btn { padding: 7px 10px; font-size: 13.5px; white-space: nowrap; }
+}
