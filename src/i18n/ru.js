@@ -330,6 +330,11 @@ export default {
   },
 
   compare: {
+    exportTable: "Таблица сравнения (CSV)",
+    exportByPull: "Шанс по круткам, все варианты (CSV)",
+    fileTable: "sravnenie",
+    fileByPull: "sravnenie-shans-po-krutkam",
+    imageTitle: "Сравнение · Шанс по круткам",
     emptyTitle: "Сравнивать пока нечего",
     emptyText: "Настройте баннер и план круток, затем нажмите «Добавить в сравнение» под планом. Переключитесь на другой баннер или измените правила и добавьте ещё раз. Все сохранённые варианты появятся здесь рядом.",
     within: "Сравнить шанс за",
@@ -354,11 +359,11 @@ export default {
   },
 
   goalLabel: {
-    total: (name, copies) => `${name} ×${copies}`,
-    specific: (item, copies) => `${item} ×${copies}`,
-    distinct: (k, name, copies) => `${k} разных: ${name}${copies > 1 ? ` ×${copies} каждого` : ""}`,
+    total: (name, copies, have) => (have > 0 ? `${name} ${have} → ${copies}` : `${name} ×${copies}`),
+    specific: (item, copies, have) => (have > 0 ? `${item} ${have} → ${copies}` : `${item} ×${copies}`),
+    distinct: (k, name, copies, have) => `${k} разных: ${name}${copies > 1 ? ` ×${copies} каждого` : ""}${have > 0 ? `, уже есть ${have}` : ""}`,
     subset: (names, pool) => (names.length <= 3 ? names.join(" / ") : `${pool} (выбрано ${names.length})`),
-    distinctFrom: (k, from, copies) => `${k} разных из: ${from}${copies > 1 ? ` ×${copies} каждого` : ""}`,
+    distinctFrom: (k, from, copies, have) => `${k} разных из: ${from}${copies > 1 ? ` ×${copies} каждого` : ""}${have > 0 ? `, уже есть ${have}` : ""}`,
     joinAll: " + ",
     joinAny: " или ",
   },

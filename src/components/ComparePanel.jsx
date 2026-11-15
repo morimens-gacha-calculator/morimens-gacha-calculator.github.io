@@ -1,9 +1,10 @@
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import { Line } from "react-chartjs-2";
 import { HelpButton } from "./Help.jsx";
 import NumberInput from "./NumberInput.jsx";
 import { fmtInt, fmtNum, fmtPct } from "../model.js";
-import { themeColors, sample } from "./ResultChart.jsx";
+import { themeColors, sample, usePopup } from "./ResultChart.jsx";
+import { downloadChartPng, downloadCsv, fileName } from "../export.js";
 import { useT, errorText } from "../i18n/index.js";
 
 // Side-by-side comparison of saved setups (banner + plan + pity)
@@ -17,6 +18,7 @@ export default function ComparePanel({ items, results, budget, setBudget, rename
     return { it, i, res, r, chance };
   });
   const ready = rows.filter((x) => x.r);
+  const chartRef = useRef(null);
 
   // Best value per column: lowest pulls, highest chance
   const best = {
@@ -66,11 +68,13 @@ export default function ComparePanel({ items, results, budget, setBudget, rename
           {L.pulls}
         </label>
         <HelpButton label={L.helpLabel} text={L.help} />
+        <CompareExport rows={rows} ready={ready} budget={budget} chartRef={chartRef} />
       </div>
 
       <div className="chart-container compare-chart">
         {chart && (
           <Line
+            ref={chartRef}
             data={chart.data}
             options={{
               responsive: true, maintainAspectRatio: false, animation: false, parsing: false, normalized: true,
@@ -129,6 +133,44 @@ export default function ComparePanel({ items, results, budget, setBudget, rename
           </tbody>
         </table>
       </div>
+    </div>
+  );
+}
+
+// "Export ▾" for the comparison: the table and the chance curves as CSV, the chart as PNG
+function CompareExport({ rows, ready, budget, chartRef }) {
+  const T = useT();
+  const L = T.compare;
+  const { open, setOpen, ref } = usePopup();
+  const run = (fn) => { setOpen(false); fn(); };
+  const table = () => [
+    [L.setup, L.average, L.median, L.p90, L.worst, L.withinN(budget)],
+    ...rows.map(({ it, r, chance }) => (r
+      ? [it.name, r.mean, r.median ?? "", r.percentiles.p90 ?? "", r.max ?? "", chance]
+      : [it.name, "", "", "", "", ""])),
+  ];
+  const byPull = () => {
+    const last = Math.max(budget || 0, ...ready.map(({ r }) => r.cdf.length - 1));
+    const out = [[T.chart.csvPull, ...ready.map(({ it }) => it.name)]];
+    for (let t = 0; t <= last; t++) out.push([t, ...ready.map(({ r }) => (t < r.cdf.length ? r.cdf[t] : 1 - r.tail))]);
+    return out;
+  };
+  const image = () => {
+    const cs = getComputedStyle(document.documentElement);
+    const v = (n, d) => cs.getPropertyValue(n).trim() || d;
+    return { background: v("--pop-bg", "#ffffff"), ink: v("--ink", "#000000"), muted: v("--ink-2", "#555555"), title: L.imageTitle, subtitle: ready.map(({ it }) => it.name).join(" · ") };
+  };
+  return (
+    <div className="lines-menu compare-export" ref={ref}>
+      <button type="button" className="chip-tab" aria-expanded={open} disabled={!ready.length} onClick={() => setOpen((o) => !o)}>{T.chart.export} ▾</button>
+      {open && ready.length > 0 && (
+        <div className="lines-pop" role="menu" aria-label={T.chart.export}>
+          <button type="button" role="menuitem" className="menu-item" onClick={() => run(() => downloadCsv(fileName(L.fileTable) + ".csv", table()))}>{L.exportTable}</button>
+          <button type="button" role="menuitem" className="menu-item" onClick={() => run(() => downloadCsv(fileName(L.fileByPull) + ".csv", byPull()))}>{L.exportByPull}</button>
+          <button type="button" role="menuitem" className="menu-item" disabled={!chartRef.current}
+            onClick={() => run(() => chartRef.current && downloadChartPng(chartRef.current, fileName(L.fileTable) + ".png", image()))}>{T.chart.exportImage}</button>
+        </div>
+      )}
     </div>
   );
 }

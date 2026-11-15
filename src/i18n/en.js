@@ -329,6 +329,11 @@ export default {
   },
 
   compare: {
+    exportTable: "Comparison table (CSV)",
+    exportByPull: "Chance by pull, every setup (CSV)",
+    fileTable: "comparison",
+    fileByPull: "comparison-chance-by-pull",
+    imageTitle: "Comparison · Chance by pull",
     emptyTitle: "Nothing to compare yet",
     emptyText: "Set up a banner and a pull plan, then press Add to comparison under the Pull Plan. Switch to another preset or change the rules, and add again. Every saved setup shows up here side by side.",
     within: "Compare the chance within",
@@ -354,11 +359,11 @@ export default {
 
   // How a pull plan row is named in results ("Aria ×7", "3 different character")
   goalLabel: {
-    total: (name, copies) => `${name} ×${copies}`,
-    specific: (item, copies) => `${item} ×${copies}`,
-    distinct: (k, name, copies) => `${k} different ${name}${copies > 1 ? ` ×${copies} each` : ""}`,
+    total: (name, copies, have) => (have > 0 ? `${name} ${have} → ${copies}` : `${name} ×${copies}`),
+    specific: (item, copies, have) => (have > 0 ? `${item} ${have} → ${copies}` : `${item} ×${copies}`),
+    distinct: (k, name, copies, have) => `${k} different ${name}${copies > 1 ? ` ×${copies} each` : ""}${have > 0 ? `, ${have} owned` : ""}`,
     subset: (names, pool) => (names.length <= 3 ? names.join(" / ") : `${pool} (${names.length} chosen)`),
-    distinctFrom: (k, from, copies) => `${k} different of ${from}${copies > 1 ? ` ×${copies} each` : ""}`,
+    distinctFrom: (k, from, copies, have) => `${k} different of ${from}${copies > 1 ? ` ×${copies} each` : ""}${have > 0 ? `, ${have} owned` : ""}`,
     joinAll: " + ",
     joinAny: " or ",
   },

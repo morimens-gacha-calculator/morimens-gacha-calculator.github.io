@@ -265,10 +265,13 @@ export function reqLabel(tree, r) {
   const t = allAlts(tree).find((a) => a.key === r.path);
   const sub = rowSubset(tree, r);
   const n = !t ? r.path : sub?.length ? L.subset(sub.map((i) => itemNames(t.alt)[i]), t.name) : t.name;
-  if (sub?.length && r.type === "distinct") return L.distinctFrom(r.k, n, r.copies);
-  if (r.type === "total") return L.total(n, r.copies);
-  if (r.type === "specific") return L.specific(t ? itemNames(t.alt)[r.item ?? 0] ?? n : n, r.copies);
-  return L.distinct(r.k, n, r.copies);
+  // copies already owned ("Have"): one number for totals and specific items, one per item for
+  // "different items" (shown as their sum)
+  const have = r.type === "distinct" ? listOfInts(r.from).reduce((s, x) => s + x, 0) : Math.max(0, Math.floor(num(r.from, 0)));
+  if (sub?.length && r.type === "distinct") return L.distinctFrom(r.k, n, r.copies, have);
+  if (r.type === "total") return L.total(n, r.copies, have);
+  if (r.type === "specific") return L.specific(t ? itemNames(t.alt)[r.item ?? 0] ?? n : n, r.copies, have);
+  return L.distinct(r.k, n, r.copies, have);
 }
 
 // Everything the worker needs

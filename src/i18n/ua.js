@@ -331,6 +331,11 @@ export default {
   },
 
   compare: {
+    exportTable: "Таблиця порівняння (CSV)",
+    exportByPull: "Шанс за круткою, усі варіанти (CSV)",
+    fileTable: "porivnyannya",
+    fileByPull: "porivnyannya-shans-za-krutkoyu",
+    imageTitle: "Порівняння · Шанс за круткою",
     emptyTitle: "Порівнювати поки нічого",
     emptyText: "Налаштуйте банер і план круток, потім натисніть «Додати до порівняння» під планом. Перемкніться на інший банер або змініть правила й додайте ще раз. Усі збережені варіанти з'являться тут поруч.",
     within: "Порівняти шанс за",
@@ -355,11 +360,11 @@ export default {
   },
 
   goalLabel: {
-    total: (name, copies) => `${name} ×${copies}`,
-    specific: (item, copies) => `${item} ×${copies}`,
-    distinct: (k, name, copies) => `${k} різних: ${name}${copies > 1 ? ` ×${copies} кожного` : ""}`,
+    total: (name, copies, have) => (have > 0 ? `${name} ${have} → ${copies}` : `${name} ×${copies}`),
+    specific: (item, copies, have) => (have > 0 ? `${item} ${have} → ${copies}` : `${item} ×${copies}`),
+    distinct: (k, name, copies, have) => `${k} різних: ${name}${copies > 1 ? ` ×${copies} кожного` : ""}${have > 0 ? `, уже є ${have}` : ""}`,
     subset: (names, pool) => (names.length <= 3 ? names.join(" / ") : `${pool} (вибрано ${names.length})`),
-    distinctFrom: (k, from, copies) => `${k} різних із: ${from}${copies > 1 ? ` ×${copies} кожного` : ""}`,
+    distinctFrom: (k, from, copies, have) => `${k} різних із: ${from}${copies > 1 ? ` ×${copies} кожного` : ""}${have > 0 ? `, уже є ${have}` : ""}`,
     joinAll: " + ",
     joinAny: " або ",
   },

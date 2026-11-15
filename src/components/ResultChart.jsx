@@ -180,7 +180,7 @@ export default function ResultChart({ state, update, engine, theme }) {
 }
 
 // A small pop-up menu that closes on outside clicks and Escape
-function usePopup() {
+export function usePopup() {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
   useEffect(() => {
