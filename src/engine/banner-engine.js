@@ -1096,33 +1096,13 @@ function budgetLayered(plan, B) {
   if (!(Number.isInteger(B) && B >= 0)) throw new Error("budget must be a whole number of pulls ≥ 0");
   const { items, gap, gap1, goalMode } = plan;
 
-  // P(N(t) = m): how many events by pull t, for every t ≤ B
-  const Ccum = []; // Ccum[m][t] = P(event m+1 has happened by pull t)
-  if (gap) {
-    let tau = new Float64Array(B + 1);
-    gap1.forEach((v, i) => { if (i <= B) tau[i] = v; });
-    for (let m = 1; m < 1e5; m++) {
-      const c = new Float64Array(B + 1);
-      let acc = 0;
-      for (let t = 0; t <= B; t++) { acc += tau[t]; c[t] = acc; }
-      Ccum.push(c);
-      if (acc < 1e-15) break;
-      const nt = new Float64Array(B + 1);
-      for (let t = 0; t <= B; t++) {
-        if (!tau[t]) continue;
-        for (let d = 1; d < gap.length && t + d <= B; d++) nt[t + d] += tau[t] * gap[d];
-      }
-      tau = nt;
-    }
-  } else {
-    for (let m = 1; m <= B + 1; m++) Ccum.push(Float64Array.from({ length: B + 1 }, (_, t) => (t >= m ? 1 : 0)));
-  }
-  const mCount = Ccum.length; // events beyond this never happen within B pulls
-  const pN = (t, m) => (m === 0 ? 1 : Ccum[m - 1][t]) - (m < mCount ? Ccum[m][t] : 0);
-
+  // How many events (SSRs) can happen within B pulls: P(m-th event by pull B) for each m
+  // (tauB[m]), up to the first m where it's below 1e-15. "mCount or more" counts as mCount.
+  const ev = gap ? eventsByPull(gap1, gap, B) : null;
+  const mCount = gap ? ev.mCount : B + 1;
   // Per pool: progress of each row after n hits, until every row is maxed out
   const perGroup = items.map((x) => (x.formula
-    ? cached("poolBudget", [x.formula, mCount], () => poolBudget(x.formula, mCount))
+    ? cached("poolBudget", [x.formula, mCount], () => poolBudget(x.formula, mCount, x.S))
     : cached("poolChainBudget", [x.chain, mCount], () => poolChainBudget(x.chain, mCount))));
 
   // Per event count m: distribution of hits on each pool, and the chance the goal is met
@@ -1152,22 +1132,22 @@ function budgetLayered(plan, B) {
   const order = [];
   plan.G.forEach((grp, gi) => grp.idx.forEach((orig, i) => { order[orig] = { gi, i, r: rowInfo(grp.reqs[i], grp.alt) }; }));
 
-  const expectedByPull = order.map(() => new Float64Array(B + 1));
-  const goalByPull = new Float64Array(B + 1);
   const Em = order.map(({ gi, i }) => hitDist.map((h) => {
     const { lo, w } = h.g[gi], E = perGroup[gi].E[i];
     let s = 0;
     for (let j = 0; j < w.length; j++) s += w[j] * E[lo + j];
     return s;
   }));
-  for (let t = 0; t <= B; t++) {
-    for (let m = 0; m <= mCount && m < hitDist.length; m++) {
-      const p = pN(t, m);
-      if (!p) continue;
-      goalByPull[t] += p * hitDist[m].done;
-      order.forEach((_, k) => { expectedByPull[k][t] += p * Em[k][m]; });
-    }
-  }
+  const done = hitDist.map((h) => h.done);
+  // Curves over pulls: goal chance and each row's expected progress
+  const [goalByPull, ...expectedByPull] = gap
+    ? curvesByPull(gap1, gap, B, mCount, [done, ...Em])
+    : [done, ...Em].map((f) => Float64Array.from({ length: B + 1 }, (_, t) => f[Math.min(t, f.length - 1)]));
+  for (let t = 0; t <= B; t++) goalByPull[t] = Math.min(1, Math.max(0, goalByPull[t]));
+  // P(exactly m events by pull B), for the distributions at B
+  const pAtB = (m) => (gap
+    ? (m === 0 ? 1 : ev.tauB[m]) - (m < mCount ? ev.tauB[m + 1] : 0)
+    : (m === Math.min(B, mCount) ? 1 : 0));
   return {
     pulls: B,
     chanceGoal: goalByPull[B],
@@ -1175,7 +1155,7 @@ function budgetLayered(plan, B) {
     requirements: order.map(({ gi, i, r }, k) => {
       const dist = new Float64Array(r.max + 1);
       for (let m = 0; m <= mCount && m < hitDist.length; m++) {
-        const p = pN(B, m);
+        const p = Math.max(0, pAtB(m));
         if (!p) continue;
         const { lo, w } = hitDist[m].g[gi];
         for (let j = 0; j < w.length; j++) {
@@ -1195,6 +1175,95 @@ function budgetLayered(plan, B) {
       };
     }),
   };
+}
+
+// ── Renewal curves (budget reports of the layered method) ─────────────────────
+// Events are a renewal process: the first gap has distribution gap1, later gaps gap. The time of
+// the m-th event, τ_m, has generating function G1(z)·G(z)^(m−1). Everything the budget report
+// needs over pulls is a sum over m of such terms, evaluated with one FFT (no m × t table):
+//   Σ_m P(exactly m events by t)·f(m) = f(0) + Σ_{m≥1} P(τ_m ≤ t)·(f(m) − f(m−1))   (summation by parts)
+// and P(τ_m ≤ B) for every m from Parseval: Σ_t τ_m(t)·[t ≤ B] = (1/L) Σ_z Τ_m(z)·conj(I(z)).
+// The FFT length is longer than τ of the last event that matters, so nothing wraps around.
+function fftLength(gap1, gap, M, B) {
+  const len = Math.max(B + 1, (gap1.length - 1) + Math.max(0, M - 1) * (gap.length - 1) + 1);
+  let L = 2;
+  while (L < len) L <<= 1;
+  if (L > 1 << 24) throw new Error("Too big: the budget spans too many pulls for the report.");
+  return L;
+}
+function transformed(arr, L) {
+  const re = new Float64Array(L), im = new Float64Array(L);
+  arr.forEach((v, i) => { if (i < L) re[i] = v; });
+  fft(re, im, false);
+  return { re, im };
+}
+
+// A number of events surely enough for B pulls: mean + 10 standard deviations + margin
+function eventsBound(gap, B) {
+  let mu = 0, m2 = 0;
+  gap.forEach((p, t) => { mu += p * t; m2 += p * t * t; });
+  const v = Math.max(0, m2 - mu * mu);
+  return Math.min(B + 1, Math.ceil(1.05 * B / mu + 12 * Math.sqrt(B * v / (mu * mu * mu) + 1) + 20));
+}
+
+// P(τ_m ≤ B) for m = 1, 2, … by Parseval against the indicator of t ≤ B, over half the
+// frequencies (the rest mirror them). Stops at the first m below 1e-15 (mCount); asks for more
+// events than the estimate if none is that small yet.
+function eventsByPull(gap1, gap, B) {
+  for (let M = eventsBound(gap, B); ; M = Math.min(B + 1, M * 2)) {
+    const L = fftLength(gap1, gap, M, B);
+    const G = transformed(gap, L), G1 = transformed(gap1, L);
+    const I = transformed(Array.from({ length: B + 1 }, () => 1), L);
+    const acc = new Float64Array(M + 1);
+    for (let z = 0; z <= L / 2; z++) {
+      const gr = G.re[z], gi = G.im[z], hr = G1.re[z], hi = G1.im[z];
+      const wgt = z === 0 || z === L / 2 ? 1 : 2;
+      let wr = hr * I.re[z] + hi * I.im[z], wi = hi * I.re[z] - hr * I.im[z]; // G1·conj(I)
+      for (let m = 1; m <= M; m++) {
+        acc[m] += wgt * wr;
+        const nr = wr * gr - wi * gi;
+        wi = wr * gi + wi * gr;
+        wr = nr;
+      }
+    }
+    const tauB = Float64Array.from(acc, (v, m) => (m === 0 ? 1 : Math.min(1, Math.max(0, v / L))));
+    // first count that can't happen within B pulls; later values are rounding noise around 0
+    let k = 1;
+    while (k <= M && tauB[k] >= 1e-15) k++;
+    if (k <= M || M >= B + 1) {
+      const mCount = Math.min(k, M);
+      return { tauB: Float64Array.from({ length: mCount + 1 }, (_, m) => (m < k ? tauB[m] : 0)), mCount };
+    }
+  }
+}
+
+// For each per-event sequence f (f[m], m = 0…M), the curve Σ_m P(exactly m events by t)·f(m),
+// t = 0…B: Horner on the differences over half the frequencies, an inverse FFT, a running sum.
+function curvesByPull(gap1, gap, B, M, fs) {
+  const L = fftLength(gap1, gap, M, B);
+  const G = transformed(gap, L), G1 = transformed(gap1, L);
+  return fs.map((f) => {
+    const d = Float64Array.from({ length: M + 1 }, (_, m) => (m === 0 ? 0 : f[m] - f[m - 1]));
+    const outR = new Float64Array(L), outI = new Float64Array(L);
+    for (let z = 0; z <= L / 2; z++) {
+      const gr = G.re[z], gi = G.im[z];
+      let xr = 0, xi = 0;
+      for (let m = M; m >= 1; m--) {
+        const nr = xr * gr - xi * gi + d[m];
+        xi = xr * gi + xi * gr;
+        xr = nr;
+      }
+      const hr = G1.re[z], hi = G1.im[z];
+      const r = xr * hr - xi * hi, i = xr * hi + xi * hr;
+      outR[z] = r; outI[z] = i;
+      if (z > 0 && z < L / 2) { outR[L - z] = r; outI[L - z] = -i; }
+    }
+    fft(outR, outI, true);
+    const curve = new Float64Array(B + 1);
+    let run = f[0];
+    for (let t = 0; t <= B; t++) { run += outR[t]; curve[t] = run; }
+    return curve;
+  });
 }
 
 // Type, target and largest progress of a row (as the chain reports them)

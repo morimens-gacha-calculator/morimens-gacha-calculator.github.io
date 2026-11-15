@@ -451,9 +451,9 @@ export function poolNotMet(plan, tol, Hmax = 1e5) {
   }
 }
 
-// Budget pieces per number of hits h ≤ min(Hcap, maxed point):
+// Budget pieces per number of hits h ≤ min(Hcap, maxed point) (knownNotMet: poolNotMet's result):
 //   D[row][h] = distribution of the row's progress, E[row][h] its mean, G[h] = P(not met)
-export function poolBudget(plan, Hcap) {
+export function poolBudget(plan, Hcap, knownNotMet = null) {
   const { rows, n, own } = plan;
   // up to where every row is at its maximum progress
   let H = Hcap;
@@ -467,7 +467,11 @@ export function poolBudget(plan, Hcap) {
       break;
     }
   }
-  const G = Array.from(notMetCurve(plan, H));
+  // P(not met) per h: reuse the curve the distribution already computed when it reaches far
+  // enough (past its end it is below the cut-off: 0)
+  const G = knownNotMet && knownNotMet.length > 0
+    ? Array.from({ length: H + 1 }, (_, h) => (h < knownNotMet.length ? knownNotMet[h] : 0))
+    : Array.from(notMetCurve(plan, H));
   const D = [], E = [];
   rows.forEach((r, ri) => {
     const d = [], e = [];

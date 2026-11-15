@@ -117,3 +117,37 @@ test("event layer, 3 groups with a budget report (pinned)", () => {
   assert.ok(Math.abs(r.budget.chanceGoal - REF_ANNIV.chance) < 1e-12, `chance ${r.budget.chanceGoal}`);
   r.budget.requirements.forEach((x, i) => assert.ok(Math.abs(x.mean - REF_ANNIV.rows[i]) < 1e-9, `row ${i}: ${x.mean}`));
 });
+
+// Budget reports of the layered method use generating functions + FFT instead of a table of
+// "events by pull". Long budgets (many SSRs) against the joint method's pull-by-pull chain:
+for (const [label, q] of [
+  ["Kaleido default, 3,000 pulls", { ...K2, budget: 3000 }],
+  ["Kaleido any mode, 1,500 pulls", { ...K2, goalMode: "any", budget: 1500 }],
+  ["Anniversary from pity, 700 pulls", { ...A, start: { pity: { "0": 20, "0,0": 1 } }, goal: [{ path: "0,0,0", copies: 3 }, { path: "0,1", type: "specific", item: 4, copies: 2 }], budget: 700 }],
+  ["Limited character, 4,000 pulls (goal certain)", { ...LC, goal: [{ path: "0,0", copies: 2 }, { path: "0,1", type: "distinct", k: 3, copies: 1 }], budget: 4000 }],
+]) {
+  test(`long budget, layered = joint: ${label}`, () => {
+    const J = solve({ ...q, method: "joint" }), L = solve({ ...q, method: "layered" });
+    const d = resultDiff(J, L);
+    assert.ok(d < 1e-11, `differs by ${d}`);
+    for (let t = 0; t < J.budget.goalByPull.length; t += 1) assert.ok(L.budget.goalByPull[t] >= 0 && L.budget.goalByPull[t] <= 1);
+  });
+}
+
+test("budget edge cases: 0 pulls, fewer pulls than one SSR gap", () => {
+  const goal = [{ path: "0,0", copies: 2 }, { path: "0,1", type: "distinct", k: 3, copies: 1 }];
+  for (const [budget, start] of [[0, {}], [10, { pity: { "0": 25 } }], [3, {}]]) {
+    const J = solve({ ...LC, goal, start, budget, method: "joint" }), L = solve({ ...LC, goal, start, budget, method: "layered" });
+    const d = resultDiff(J, L);
+    assert.ok(d < 1e-12, `budget ${budget}: differs by ${d}`);
+    assert.equal(L.budget.goalByPull.length, budget + 1);
+  }
+});
+
+test("×16 budget report at 20,000 pulls (pinned to the version with the full table)", () => {
+  const b = solve({ ...K2, goal: [{ path: "0,0", type: "distinct", k: 19, copies: 16 }, { path: "0,1", type: "distinct", k: 19, copies: 16 }], budget: 20000 }).budget;
+  assert.ok(Math.abs(b.chanceGoal - 0.42472191075631854) < 1e-11, `chance ${b.chanceGoal}`);
+  assert.ok(Math.abs(b.requirements[0].mean - 18.255097549215197) < 1e-10);
+  assert.ok(Math.abs(b.requirements[1].mean - 18.956726634460832) < 1e-10);
+  assert.ok(Math.abs(b.goalByPull[10000]) < 1e-11, "nothing by 10,000 pulls");
+});
