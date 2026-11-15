@@ -1,5 +1,6 @@
 // The finite Markov chain of a banner (and goal): building it, merging states that behave
 // alike, the exact worst case, and small helpers for stepping it.
+import { stopIfCancelled } from "./cancel.js";
 import { DEFAULT_MAX_STATES, LUMPING_TOLERANCE, MAX_GAP } from "./settings.js";
 import { EngineError, internalError } from "./errors.js";
 import { parseGoal } from "./goal.js";
@@ -244,7 +245,10 @@ export function compile(treeRaw, goalRaw, { start: startRaw = {}, goalMode = "al
   if (!done(start)) { index.set(start.join(","), 1); states.push(start); }
   if (onProgress) onProgress({ phase: "build", states: states.length });
   for (let k = 1; k < states.length; k++) {
-    if (onProgress && (k & 2047) === 0) onProgress({ phase: "build", states: states.length });
+    if ((k & 2047) === 0) {
+      stopIfCancelled();
+      if (onProgress) onProgress({ phase: "build", states: states.length });
+    }
     const merged = new Map();
     for (const [p, t, lab] of step(states[k])) {
       let j = 0;

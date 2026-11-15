@@ -11,6 +11,7 @@
 //            SSR pity), the gaps between events are independent and identically distributed;
 //            the number of pulls is a sum of gaps, combined with an FFT (renewal.js).
 // The joint state space is never built, so goals needing billions of joint states are cheap.
+import { stopIfCancelled } from "./cancel.js";
 import { DEFAULT_MAX_STATES, EVENT_CELLS_PER_STATE, MAX_EVENTS, MAX_EVENT_CELLS, MAX_PULL_SPAN, NEGLIGIBLE, TINY_JOINT_CHAIN, eventTolerance, gapTolerance, poolTolerance } from "./settings.js";
 import { EngineError } from "./errors.js";
 import { cached } from "./cache.js";
@@ -130,6 +131,7 @@ export function walkEvents(plan, caps, visit) {
   let table = new Int32Array(4096), mask = 4095;
   const h2 = new Int32Array(K);
   for (let m = 0; ; m++) {
+    stopIfCancelled();
     if (visit(m, cur) === false) return;
     // hash table for merging transitions that land on the same cell (≤ 50% full)
     const bound = cur.n * maxDeg;
@@ -234,7 +236,10 @@ export function solveLayered(plan, eps, maxPulls, onProgress) {
       outR[z] = ar * hr[z] - ai * hi[z] + pMa[0];
       outI[z] = ar * hi[z] + ai * hr[z];
       if (z > 0 && z < L / 2) { outR[L - z] = outR[z]; outI[L - z] = -outI[z]; }
-      if (onProgress && (z & 1023) === 0) onProgress({ phase: "combine", done: z, total: L / 2 });
+      if ((z & 1023) === 0) {
+        stopIfCancelled();
+        if (onProgress) onProgress({ phase: "combine", done: z, total: L / 2 });
+      }
     }
     fft(outR, outI, true);
     pmfT = Array.from(outR.subarray(0, len), (v) => (v > 0 ? v : 0));

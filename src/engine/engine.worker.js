@@ -7,7 +7,7 @@
 // threads: false in a message keeps that calculation on one core (comparisons run several
 // workers side by side instead).
 import { PERCENTILE_SLACK } from "./settings.js";
-import { solve, budgetOnly } from "./banner-engine.js";
+import { solve, budgetOnly, setCancelCheck } from "./banner-engine.js";
 import { setThreadPool, createPoolMemory } from "./chain-step.js";
 
 // Helper threads for big chains. Only on cross-origin isolated pages (SharedArrayBuffer) with
@@ -45,9 +45,19 @@ function transferables(x, out = []) {
   return out;
 }
 
+// Cancelling in place: the page shares one number, the id of the job it currently wants
+// ({ type: "cancel-channel", sab }). The engine checks it in its long loops and stops cleanly
+// when it changes; the worker answers { id, cancelled: true } and is ready for the next job, with
+// its cache and helper threads intact. (Messages can't do this: a busy worker doesn't receive them.)
+let wanted = null;
+
 self.onmessage = async ({ data }) => {
+  if (data?.type === "cancel-channel") { wanted = new Int32Array(data.sab); return; }
   const { id, mode, desired, threads = true, ...query } = data;
   setThreadPool(threads ? await startPool() : null);
+  const stillWanted = () => !wanted || Atomics.load(wanted, 0) === id;
+  if (!stillWanted()) { self.postMessage({ id, cancelled: true }); return; }
+  setCancelCheck(wanted ? () => Atomics.load(wanted, 0) !== id : null);
   let last = 0;
   const onProgress = (p) => {
     const now = performance.now();
@@ -70,7 +80,10 @@ self.onmessage = async ({ data }) => {
     }
     self.postMessage({ id, ok: true, result }, [...new Set(transferables(result))]);
   } catch (err) {
+    if (err.code === "cancelled") self.postMessage({ id, cancelled: true });
     // code + values let the page show the message in the reader's language (errors.engine)
-    self.postMessage({ id, ok: false, error: err.message, code: err.code ?? null, values: err.values ?? null });
+    else self.postMessage({ id, ok: false, error: err.message, code: err.code ?? null, values: err.values ?? null });
+  } finally {
+    setCancelCheck(null);
   }
 };

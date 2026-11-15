@@ -3,6 +3,7 @@
 // (pity, streaks). So: (a) the pool formulas give P(goal not met after n hits); (b) the banner
 // chain gives the distribution of hits on the pool after t pulls; combine. Exact. Used when the
 // layered method doesn't fit (the banner doesn't restart at each event).
+import { stopIfCancelled } from "./cancel.js";
 import { SPLIT_ADVANTAGE, poolTolerance } from "./settings.js";
 import { EngineError } from "./errors.js";
 import { cached } from "./cache.js";
@@ -61,6 +62,7 @@ export function solveSplit(tree, plan, opts, eps, maxPulls) {
   const survival = [sumMiss()], pmf = [1 - survival[0]];
   let t = 0, remaining = survival[0];
   while (remaining > 0 && remaining >= eps && t < maxPulls) {
+    if ((t & 15) === 0) stopIfCancelled();
     if (opts.onProgress && (t & 15) === 0) opts.onProgress({ phase: "calc", t, remaining, eps });
     st.step(); // mass reaching state 0 has ≥ nMax hits: goal met for sure
     t++;
@@ -105,6 +107,7 @@ export function budgetSplit(tree, plan, opts, B) {
     };
     record(0);
     for (let t = 1; t <= B; t++) {
+      if ((t & 15) === 0) stopIfCancelled();
       if (opts.onProgress && (t & 15) === 0) opts.onProgress({ phase: "budget", done: t, total: B });
       sink += st.step();
       record(t);

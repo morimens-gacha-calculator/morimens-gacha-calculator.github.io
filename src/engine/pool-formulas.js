@@ -13,6 +13,7 @@
 // (given h hits on the union, Binomial(h, p) of them land in A). Identical items are combined
 // by repeated squaring. Every term is ≥ 0, so there's no cancellation. Markers are handled by
 // evaluating at roots of unity (|value| ≤ 1) and transforming back with an inverse DFT.
+import { stopIfCancelled } from "./cancel.js";
 import { BINOMIAL_CUTOFF, MARKER_ROUNDING, MAXED_OUT, MAX_POOL_HITS, NEGLIGIBLE, WEIGHT_CACHE_CELLS } from "./settings.js";
 import { EngineError } from "./errors.js";
 
@@ -94,6 +95,7 @@ function convolve(A, B, H, P) {
   for (let q = 0; q < P; q++) { re.push(new Float64Array(H + 1)); if (cplx) im.push(new Float64Array(H + 1)); }
   const ww = W.w;
   for (let h = 0; h <= H; h++) {
+    if ((h & 255) === 0) stopIfCancelled();
     const lo = W.lo[h], base = W.off[h], len = W.off[h + 1] - base;
     for (let q = 0; q < P; q++) {
       const ar = A.re[q], br = B.re[q];

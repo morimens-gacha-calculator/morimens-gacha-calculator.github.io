@@ -2,6 +2,7 @@
 // Everything tracked together in one chain: exact for any goal, including the worst case;
 // used for small goals and for goals the other methods can't take (rows counting several
 // pools together, banners that don't restart at each event).
+import { stopIfCancelled } from "./cancel.js";
 import { EngineError } from "./errors.js";
 import { makeStepper } from "./chain-step.js";
 import { compile } from "./chain.js";
@@ -19,6 +20,7 @@ export function solveJoint(orig, opts, eps, maxPulls, onProgress) {
   const st = makeStepper(c);
   let t = 0, remaining = survival[0];
   while (remaining > 0 && remaining >= eps && t < maxPulls) {
+    if ((t & 15) === 0) stopIfCancelled();
     if (onProgress && (t & 15) === 0) onProgress({ phase: "calc", t, remaining, eps });
     pmf.push(st.step());
     t++;
@@ -48,6 +50,7 @@ export function budgetReport(tree, goal, opts, B) {
   };
   record(0);
   for (let t = 1; t <= B; t++) {
+    if ((t & 15) === 0) stopIfCancelled();
     if (opts.onProgress && (t & 15) === 0) opts.onProgress({ phase: "budget", done: t, total: B });
     st.step();
     record(t);

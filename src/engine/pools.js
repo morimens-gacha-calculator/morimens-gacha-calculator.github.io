@@ -1,6 +1,7 @@
 // Per-pool pieces for the layered and split methods: the exact formulas (pool-formulas.js),
 // or a small chain over the pool's items when the formulas can't (total rows on subsets that
 // partly overlap).
+import { stopIfCancelled } from "./cancel.js";
 import { MAX_CHAIN_HITS, NEGLIGIBLE } from "./settings.js";
 import { advance, compile } from "./chain.js";
 import { expandSubsets, resolveItem } from "./goal.js";
@@ -35,6 +36,7 @@ export function poolChainNotMet(pc, tol) {
   let cur = new Float64Array(mc.N), next = new Float64Array(mc.N), miss = S[0];
   cur[mc.startIndex] = 1;
   while (miss > 0 && miss >= tol && S.length < MAX_CHAIN_HITS) {
+    if ((S.length & 63) === 0) stopIfCancelled();
     advance(cur, next, mc.N, mc.rowStart, mc.col, mc.prob);
     next[0] = 0;
     miss = 0;
@@ -53,6 +55,7 @@ export function poolChainBudget(pc, Hcap) {
   let cur = new Float64Array(mc.N), next = new Float64Array(mc.N);
   cur[mc.startIndex] = 1;
   for (let n = 0; n <= Hcap; n++) {
+    if ((n & 63) === 0) stopIfCancelled();
     mc.reqs.forEach((r, i) => {
       const d = new Float64Array(r.max + 1);
       let e = 0;

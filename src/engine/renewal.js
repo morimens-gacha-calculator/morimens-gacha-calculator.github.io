@@ -5,6 +5,7 @@
 //   Σ_m P(exactly m events by t)·f(m) = f(0) + Σ_{m≥1} P(τ_m ≤ t)·(f(m) − f(m−1))   (summation by parts)
 // and P(τ_m ≤ B) for every m from Parseval: Σ_t τ_m(t)·[t ≤ B] = (1/L) Σ_z Τ_m(z)·conj(I(z)).
 // The FFT length is longer than τ of the last event that matters, so nothing wraps around.
+import { stopIfCancelled } from "./cancel.js";
 import { EVENTS_GUESS_FACTOR, EVENTS_GUESS_MARGIN, EVENTS_GUESS_SD, MAX_FFT_LENGTH, NEGLIGIBLE } from "./settings.js";
 import { EngineError } from "./errors.js";
 
@@ -67,7 +68,7 @@ export function eventsByPull(gap1, gap, B, tick = null) {
     const I = transformed(Array.from({ length: B + 1 }, () => 1), L);
     const acc = new Float64Array(M + 1);
     for (let z = 0; z <= L / 2; z++) {
-      if (tick && (z & 2047) === 0) tick(z / (L / 2));
+      if ((z & 2047) === 0) { stopIfCancelled(); tick?.(z / (L / 2)); }
       const gr = G.re[z], gi = G.im[z], hr = G1.re[z], hi = G1.im[z];
       const wgt = z === 0 || z === L / 2 ? 1 : 2;
       let wr = hr * I.re[z] + hi * I.im[z], wi = hi * I.re[z] - hr * I.im[z]; // G1·conj(I)
@@ -98,7 +99,7 @@ export function curvesByPull(gap1, gap, B, M, fs, tick = null) {
     const d = Float64Array.from({ length: M + 1 }, (_, m) => (m === 0 ? 0 : f[m] - f[m - 1]));
     const outR = new Float64Array(L), outI = new Float64Array(L);
     for (let z = 0; z <= L / 2; z++) {
-      if (tick && (z & 2047) === 0) tick((c + z / (L / 2)) / fs.length);
+      if ((z & 2047) === 0) { stopIfCancelled(); tick?.((c + z / (L / 2)) / fs.length); }
       const gr = G.re[z], gi = G.im[z];
       let xr = 0, xi = 0;
       for (let m = M; m >= 1; m--) {

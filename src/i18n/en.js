@@ -357,6 +357,7 @@ export default {
       badBudget: () => "The number of pulls must be a whole number, 0 or more.",
       layeredDoesntFit: (v) => `The "Layered" method doesn't fit this goal: every target must be one pool or outcome (up to ${num(v.groups)}), and the banner must restart at each SSR. Choose "Automatic" in Settings.`,
       splitDoesntFit: () => `The "Split" method needs every target on one pool. Choose "Automatic" in Settings.`,
+      cancelled: () => "The calculation was cancelled.",
       internal: (v) => `Something went wrong inside the calculator (please report it): ${v.detail}`,
     },
   },

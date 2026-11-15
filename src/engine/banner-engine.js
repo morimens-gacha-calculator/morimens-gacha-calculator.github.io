@@ -56,6 +56,7 @@ import { budgetSplit, planSplit, solveSplit } from "./split.js";
 export { compile } from "./chain.js";
 export { expandSubsets } from "./goal.js";
 export { clearCache } from "./cache.js";
+export { setCancelCheck } from "./cancel.js";
 
 const DEFAULT_PERCENTILES = [10, 25, 50, 75, 90, 95, 99];
 
