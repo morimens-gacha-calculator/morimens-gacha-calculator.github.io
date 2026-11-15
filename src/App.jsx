@@ -177,9 +177,9 @@ export default function App() {
             </div>
 
             <BannerPicker current={state.preset} hint={P[state.preset]?.hint ?? T.app.customHint} onPick={pickBanner}
-              onReset={resetBanner} canUndo={!!undoState} undoKind={undoKind} onUndo={undoReset}
+              onReset={resetBanner} canUndo={!!undoState} undoKind={undoKind} onUndo={undoReset} onDismissUndo={() => setUndoState(null)}
               onShare={async () => ({ url: await makeShareLink(state), summary: shareSummary(state, engine.status === "busy" ? null : engine.result, T) })}
-              linkError={linkError} />
+              linkError={linkError} onDismissError={() => setLinkError(false)} />
 
             <div className="workspace">
               <div className="inputs-col">

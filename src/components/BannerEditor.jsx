@@ -143,10 +143,10 @@ function AltRow({ a, k, canRemove, canUp, canDown, move, setField, split, unspli
           </label>
         )}
         <label className="field"><span className="field-label">{B.hardPity}</span>
-          <input id={id("pity")} type="number" min="0" className="custom-input w-xs" value={a.pity} placeholder="–" onChange={(e) => setField(k, "pity", e.target.value)} />
+          <input id={id("pity")} type="number" min="0" className="custom-input w-xs" value={a.pity} placeholder="-" onChange={(e) => setField(k, "pity", e.target.value)} />
         </label>
         <label className="field"><span className="field-label">{B.softFrom}</span>
-          <input id={id("softStart")} type="number" min="0" className="custom-input w-xs" value={a.softStart} placeholder="–" onChange={(e) => setField(k, "softStart", e.target.value)} />
+          <input id={id("softStart")} type="number" min="0" className="custom-input w-xs" value={a.softStart} placeholder="-" onChange={(e) => setField(k, "softStart", e.target.value)} />
         </label>
         <label className="field"><span className="field-label">{B.softStep}</span>
           <input id={id("softStep")} type="text" className="custom-input w-xs" value={a.softStep} placeholder="6%" onChange={(e) => setField(k, "softStep", e.target.value)} />

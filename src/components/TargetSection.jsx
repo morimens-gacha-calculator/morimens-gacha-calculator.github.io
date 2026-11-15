@@ -13,7 +13,7 @@ export default function TargetSection({ state, update, engine }) {
   const budgetMode = state.mode === "budget";
   const setMode = (mode) => update((s) => ({ ...s, mode }));
 
-  let answer = "–", unit = null;
+  let answer = "-", unit = null;
   if (r && budgetMode && r.budget) answer = fmtPct(r.budget.chanceGoal);
   if (r && !budgetMode) {
     if (r.requiredPulls != null) { answer = fmtInt(r.requiredPulls); unit = L.pullsWord(r.requiredPulls); }

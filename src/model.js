@@ -348,7 +348,7 @@ const fixed = (x, d) => x.toLocaleString(loc(), { minimumFractionDigits: d, maxi
 // 0.7660 → "76.60%". A chance that would round to 0 or 100 but isn't exactly that shows as
 // "<0.01%" / ">99.99%", so a near-certainty is never presented as a certainty.
 export function fmtPct(p, d = precision) {
-  if (!Number.isFinite(p)) return "–";
+  if (!Number.isFinite(p)) return "-";
   if (p >= 1) return "100%";
   if (p <= 0) return "0%";
   const v = p * 100, step = 10 ** -d;
@@ -357,5 +357,5 @@ export function fmtPct(p, d = precision) {
   if (rounded >= 100) return `>${fixed(100 - step, d)}%`;
   return `${fixed(rounded, d)}%`;
 }
-export const fmtInt = (x) => (x == null ? "–" : Math.round(x).toLocaleString(loc()));
-export const fmtNum = (x, d = precision) => (x == null ? "–" : fixed(x, d));
+export const fmtInt = (x) => (x == null ? "-" : Math.round(x).toLocaleString(loc()));
+export const fmtNum = (x, d = precision) => (x == null ? "-" : fixed(x, d));
