@@ -1,0 +1,52 @@
+(module
+  (memory (export "mem") 1)
+  ;; One pull: clear next, push mass from cur[1..N-1] along CSR rows. Returns Σ next[1..N-1].
+  (func (export "step") (param $rs i32) (param $col i32) (param $prob i32) (param $cur i32) (param $next i32) (param $N i32) (result f64)
+    (local $k i32) (local $e i32) (local $end i32) (local $m f64) (local $p i32) (local $s f64) (local $stop i32)
+    (local.set $p (local.get $next))
+    (local.set $stop (i32.add (local.get $next) (i32.shl (local.get $N) (i32.const 3))))
+    (block $d0 (loop $l0
+      (br_if $d0 (i32.ge_u (local.get $p) (local.get $stop)))
+      (f64.store (local.get $p) (f64.const 0))
+      (local.set $p (i32.add (local.get $p) (i32.const 8)))
+      (br $l0)))
+    (local.set $k (i32.const 1))
+    (block $d1 (loop $l1
+      (br_if $d1 (i32.ge_u (local.get $k) (local.get $N)))
+      (local.set $m (f64.load (i32.add (local.get $cur) (i32.shl (local.get $k) (i32.const 3)))))
+      (if (f64.ne (local.get $m) (f64.const 0))
+        (then
+          (local.set $e (i32.load (i32.add (local.get $rs) (i32.shl (local.get $k) (i32.const 2)))))
+          (local.set $end (i32.load (i32.add (local.get $rs) (i32.shl (i32.add (local.get $k) (i32.const 1)) (i32.const 2)))))
+          (block $d2 (loop $l2
+            (br_if $d2 (i32.ge_u (local.get $e) (local.get $end)))
+            (local.set $p (i32.add (local.get $next)
+              (i32.shl (i32.load (i32.add (local.get $col) (i32.shl (local.get $e) (i32.const 2)))) (i32.const 3))))
+            (f64.store (local.get $p)
+              (f64.add (f64.load (local.get $p))
+                (f64.mul (local.get $m) (f64.load (i32.add (local.get $prob) (i32.shl (local.get $e) (i32.const 3)))))))
+            (local.set $e (i32.add (local.get $e) (i32.const 1)))
+            (br $l2)))))
+      (local.set $k (i32.add (local.get $k) (i32.const 1)))
+      (br $l1)))
+    (local.set $s (f64.const 0))
+    (local.set $p (i32.add (local.get $next) (i32.const 8)))
+    (block $d3 (loop $l3
+      (br_if $d3 (i32.ge_u (local.get $p) (local.get $stop)))
+      (local.set $s (f64.add (local.get $s) (f64.load (local.get $p))))
+      (local.set $p (i32.add (local.get $p) (i32.const 8)))
+      (br $l3)))
+    (local.get $s))
+  ;; Σ a[k]·b[k] for k = 1..N-1
+  (func (export "dot") (param $a i32) (param $b i32) (param $N i32) (result f64)
+    (local $k i32) (local $s f64)
+    (local.set $k (i32.const 1))
+    (block $d (loop $l
+      (br_if $d (i32.ge_u (local.get $k) (local.get $N)))
+      (local.set $s (f64.add (local.get $s)
+        (f64.mul (f64.load (i32.add (local.get $a) (i32.shl (local.get $k) (i32.const 3))))
+                 (f64.load (i32.add (local.get $b) (i32.shl (local.get $k) (i32.const 3)))))))
+      (local.set $k (i32.add (local.get $k) (i32.const 1)))
+      (br $l)))
+    (local.get $s))
+)

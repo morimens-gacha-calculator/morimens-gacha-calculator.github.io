@@ -152,7 +152,7 @@ export default {
     methodAuto: "Авто",
     methodJoint: "Совместный",
     methodSplit: "Раздельный (только один пул)",
-    methodLayered: "Послойный (по SSR, до двух пулов)",
+    methodLayered: "Послойный (по SSR, до 7 пулов)",
   },
 
   plan: {

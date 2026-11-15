@@ -57,6 +57,27 @@ function parseProb(x, where) {
   throw new Error(`Bad probability ${JSON.stringify(x)} at ${where}`);
 }
 
+import { poolPlan, poolNotMet, poolBudget, chainSizeEstimate } from "./pool-formulas.js";
+import { makeStepper } from "./chain-step.js";
+
+// Pieces that don't change between runs (item formulas, event and timing chains, …) are kept,
+// so editing one row, the budget, or switching to "pulls" mode reuses the rest.
+const CACHE = new Map();
+const CACHE_MAX = 48;
+function cached(kind, keyParts, make) {
+  const key = kind + "|" + JSON.stringify(keyParts);
+  if (CACHE.has(key)) {
+    const v = CACHE.get(key);
+    CACHE.delete(key); CACHE.set(key, v); // most recently used last
+    return v;
+  }
+  const v = make();
+  CACHE.set(key, v);
+  while (CACHE.size > CACHE_MAX) CACHE.delete(CACHE.keys().next().value);
+  return v;
+}
+export function clearCache() { CACHE.clear(); }
+
 const pathKey = (path) => path.join(",");
 const isPrefix = (pre, path) => pre.length <= path.length && pre.every((v, i) => v === path[i]);
 const isPosInt = (x) => Number.isInteger(x) && x >= 1;
@@ -750,28 +771,105 @@ function firstHitPmf(c, from, cut) {
   return pmf;
 }
 
-function planLayered(tree, goal, opts, eps, force) {
-  const list = Array.isArray(goal) ? goal : Object.entries(goal ?? {}).map(([path, copies]) => ({ path, copies }));
+function resolveItem(alt, it, where) {
+  if (typeof it === "number" || /^\d+$/.test(String(it))) return Number(it);
+  const j = (alt.itemNames ?? []).indexOf(it);
+  if (j < 0) throw new Error(`Pool "${where}" has no item named "${it}"`);
+  return j;
+}
+
+// Rows of one pool → formula plan (null when the formulas can't do it: then a small chain)
+function poolPlanFor(x, ownedVal, goalMode) {
+  const alt = x.alt, where = x.reqs[0]?.label ?? pathKey(x.path);
+  const rows = x.reqs.map((r) => ({
+    type: r.type ?? "total",
+    item: r.type === "specific" ? resolveItem(alt, r.item ?? 0, where) : undefined,
+    items: Array.isArray(r.items) ? r.items.map((it) => resolveItem(alt, it, where)) : null,
+    copies: r.copies ?? 1, k: r.k, have: r.have,
+  }));
+  const owned = Array.isArray(ownedVal) ? ownedVal : ownedVal != null ? [ownedVal] : [];
+  return poolPlan(alt.count, rows, owned, goalMode);
+}
+
+// Fallback for a pool the formulas can't handle (total rows on subsets that partly overlap)
+function poolChain(x, ownedVal, opts) {
+  const miniTree = [{ p: 1, count: x.alt.count, items: x.alt.itemNames ?? undefined }];
+  const miniGoal = x.reqs.map((r) => ({ ...r, path: "0" }));
+  const miniOpts = { goalMode: opts.goalMode, maxStates: opts.maxStates, start: ownedVal != null ? { owned: { "0": ownedVal } } : {} };
+  const ex = expandSubsets(miniTree, miniGoal, miniOpts.start);
+  return { miniTree: ex.tree, miniGoal: ex.goal, miniOpts: { ...miniOpts, start: ex.start } };
+}
+function poolChainNotMet(pc, tol) {
+  const mc = compile(pc.miniTree, pc.miniGoal, pc.miniOpts);
+  const S = [mc.startIndex === 0 ? 0 : 1];
+  let cur = new Float64Array(mc.N), next = new Float64Array(mc.N), miss = S[0];
+  cur[mc.startIndex] = 1;
+  while (miss > 0 && miss >= tol && S.length < 1e5) {
+    advance(cur, next, mc.N, mc.rowStart, mc.col, mc.prob);
+    next[0] = 0;
+    miss = 0;
+    for (let k = 1; k < mc.N; k++) miss += next[k];
+    S.push(miss);
+    [cur, next] = [next, cur];
+  }
+  return { S, states: mc.N - 1 };
+}
+function poolChainBudget(pc, Hcap) {
+  const mc = compile(pc.miniTree, pc.miniGoal, { ...pc.miniOpts, absorb: false });
+  const prog = mc.reqs.map((r) => Int32Array.from(mc.states, (s, k) => (k === 0 ? 0 : Math.min(mc.progress(r, s), r.max))));
+  const maxed = Uint8Array.from(mc.states, (s, k) => (k > 0 && mc.reqs.every((r, i) => prog[i][k] >= r.max) ? 1 : 0));
+  const D = mc.reqs.map(() => []), E = mc.reqs.map(() => []), G = [];
+  let cur = new Float64Array(mc.N), next = new Float64Array(mc.N);
+  cur[mc.startIndex] = 1;
+  for (let n = 0; n <= Hcap; n++) {
+    mc.reqs.forEach((r, i) => {
+      const d = new Float64Array(r.max + 1);
+      let e = 0;
+      for (let k = 1; k < mc.N; k++) if (cur[k]) { d[prog[i][k]] += cur[k]; e += cur[k] * prog[i][k]; }
+      D[i].push(d); E[i].push(e);
+    });
+    let g = 0, notMaxed = 0;
+    for (let k = 1; k < mc.N; k++) if (cur[k]) { if (!mc.isDone(mc.states[k])) g += cur[k]; if (!maxed[k]) notMaxed += cur[k]; }
+    G.push(g);
+    if (notMaxed < 1e-15) break;
+    advance(cur, next, mc.N, mc.rowStart, mc.col, mc.prob);
+    [cur, next] = [next, cur];
+  }
+  return { D, E, G };
+}
+
+const MAX_GROUPS = 7; // transition labels have 3 bits
+
+// Rows grouped by the pool / single outcome they target (null if a row targets something else)
+function groupRows(root, list) {
   if (!list.length || list.some((g) => g.paths)) return null;
-  const t = canonTree(tree);
-  const root = normaliseNode(t, []);
-  const ex = expandSubsets(tree, list, opts.start ?? {});
-  const labels = parseGoal(normaliseNode(canonTree(ex.tree), []), ex.goal).map((r) => r.label);
   const groups = new Map();
-  for (const [idx, g0] of list.entries()) {
-    const g = { ...g0, label: labels[idx] };
+  for (const [idx, g] of list.entries()) {
     const path = resolvePath(root, g.path);
     const alt = findAlt(root, path);
-    if (!alt || alt.child) return null; // every row must target one pool or one single outcome
+    if (!alt || alt.child) return null;
     const key = pathKey(path);
     if (!groups.has(key)) groups.set(key, { path, alt, reqs: [], idx: [] });
     groups.get(key).reqs.push(g);
     groups.get(key).idx.push(idx);
   }
-  const G = [...groups.values()];
-  if (G.length > 2) return null;
+  return [...groups.values()];
+}
+const goalList = (goal) => (Array.isArray(goal) ? goal : Object.entries(goal ?? {}).map(([path, copies]) => ({ path, copies })));
+const ownedFor = (root, start, x) => Object.entries(start.owned ?? {}).find(([k]) => pathKey(resolvePath(root, k)) === pathKey(x.path))?.[1];
+function labelsOf(tree, list, start) {
+  const ex = expandSubsets(tree, list, start);
+  return parseGoal(normaliseNode(canonTree(ex.tree), []), ex.goal).map((r) => r.label);
+}
+
+function planLayered(tree, goal, opts, eps, force) {
+  const list = goalList(goal);
+  const t = canonTree(tree);
+  const root = normaliseNode(t, []);
+  const G = groupRows(root, list); // every row must target one pool or one single outcome
+  if (!G || G.length > MAX_GROUPS) return null;
   const perItem = G.some((x) => x.reqs.some((r) => (r.type ?? "total") !== "total" || Array.isArray(r.items)));
-  if (!force && !perItem) return null; // plain totals: the other methods are already cheap here
+  if (!force && !perItem) return { small: true }; // plain totals: the chain is small and gives the exact worst case
 
   // The event: the deepest node that contains every targeted outcome
   let pre = G[0].path.slice(0, -1);
@@ -793,77 +891,90 @@ function planLayered(tree, goal, opts, eps, force) {
     if (inside(p, false)) inner.streak[pathKey(p.slice(pre.length))] = v; else outer.streak[k] = v;
   }
 
-  // Items: one chain per targeted outcome, counting hits on it
-  const items = G.map((x) => {
-    const ownedEntry = Object.entries(start.owned ?? {}).find(([k]) => pathKey(resolvePath(root, k)) === pathKey(x.path));
-    const miniTree = [{ p: 1, count: x.alt.count, items: x.alt.itemNames ?? undefined }];
-    const miniGoal = x.reqs.map((r) => ({ ...r, path: "0" }));
-    const miniOpts = { goalMode: opts.goalMode, maxStates: opts.maxStates, start: ownedEntry ? { owned: { "0": ownedEntry[1] } } : {} };
-    const ex = expandSubsets(miniTree, miniGoal, miniOpts.start);
-    const mc = compile(ex.tree, ex.goal, { ...miniOpts, start: ex.start });
-    // S[n] = P(this pool's rows not yet met after n hits), summed directly for precision
-    const S = [mc.startIndex === 0 ? 0 : 1];
-    let cur = new Float64Array(mc.N), next = new Float64Array(mc.N), miss = S[0];
-    cur[mc.startIndex] = 1;
-    while (miss > 0 && miss >= eps / 1000 && S.length < 1e5) {
-      advance(cur, next, mc.N, mc.rowStart, mc.col, mc.prob);
-      next[0] = 0;
-      miss = 0;
-      for (let k = 1; k < mc.N; k++) miss += next[k];
-      S.push(miss);
-      [cur, next] = [next, cur];
-    }
-    return { S, cap: S.length - 1, miniTree: ex.tree, miniGoal: ex.goal, miniOpts: { ...miniOpts, start: ex.start }, states: mc.N - 1 };
-  });
-
   // Events: the event subtree, labelled with which targeted outcome each event hits
-  const innerTree = nodeAtCanon(t, pre);
-  const ic = compile(innerTree, null, { start: inner, maxStates: opts.maxStates, trackHits: G.map((x) => x.path.slice(pre.length)) });
+  const ic = cached("inner", [nodeAtCanon(t, pre), inner, opts.maxStates, G.map((x) => x.path.slice(pre.length))], () =>
+    compile(nodeAtCanon(t, pre), null, { start: inner, maxStates: opts.maxStates, trackHits: G.map((x) => x.path.slice(pre.length)) }));
 
   // Timing: the banner with the event subtree folded into one outcome
-  let gap = null, gap1 = null, oc = null;
+  let timing = null;
   if (pre.length) {
-    const outerTree = canonTree(t);
-    const evAlt = (() => { let n = outerTree, a = null; for (const i of pre) { a = n.alts[i]; n = a.children; } return a; })();
-    evAlt.children = null; evAlt.count = 1; delete evAlt.items;
-    oc = compile(outerTree, null, { start: outer, maxStates: opts.maxStates, trackHits: [pre] });
-    const entries = new Set();
-    for (let e = 0; e < oc.col.length; e++) if (oc.lab[e]) entries.add(oc.col[e]);
-    if (entries.size !== 1) return null; // timing doesn't restart at each event: not this method
-    const entry = [...entries][0];
-    gap = firstHitPmf(oc, entry, eps / 100);
-    gap1 = oc.startIndex === entry ? gap : firstHitPmf(oc, oc.startIndex, eps / 100);
+    timing = cached("timing", [t, pre, outer, opts.maxStates, eps], () => {
+      const outerTree = canonTree(t);
+      const evAlt = (() => { let n = outerTree, a = null; for (const i of pre) { a = n.alts[i]; n = a.children; } return a; })();
+      evAlt.children = null; evAlt.count = 1; delete evAlt.items;
+      const oc = compile(outerTree, null, { start: outer, maxStates: opts.maxStates, trackHits: [pre] });
+      const entries = new Set();
+      for (let e = 0; e < oc.col.length; e++) if (oc.lab[e]) entries.add(oc.col[e]);
+      if (entries.size !== 1) return { ok: false }; // timing doesn't restart at each event
+      const entry = [...entries][0];
+      const gap = firstHitPmf(oc, entry, eps / 100);
+      const gap1 = oc.startIndex === entry ? gap : firstHitPmf(oc, oc.startIndex, eps / 100);
+      return { ok: true, states: oc.N - 1, gap, gap1 };
+    });
+    if (!timing.ok) return null;
   }
-  // Auto: only when tracking everything together would be big (rough joint-state estimate)
-  if (!force && (oc ? oc.N : 1) * ic.N * items.reduce((m, x) => m * Math.max(1, x.states), 1) < 5000) return null;
-  return { maxStates: opts.maxStates, reqs: list, labels, G, items, ic, oc, gap, gap1, pre, goalMode: opts.goalMode };
+
+  // Items: formulas per pool (or a small chain when they can't)
+  const pools = G.map((x) => {
+    const ownedVal = ownedFor(root, start, x);
+    const fp = poolPlanFor(x, ownedVal, opts.goalMode);
+    return fp ? { formula: fp, est: chainSizeEstimate(fp) } : { chain: poolChain(x, ownedVal, opts), est: Infinity };
+  });
+
+  // Auto: a tiny joint chain is just as fast and also gives the exact worst case
+  const jointEst = (timing ? timing.states : 1) * (ic.N - 1) * pools.reduce((m, x) => m * x.est, 1);
+  if (!force && jointEst < 3000) return { small: true };
+
+  const tol = eps / 1000;
+  const items = pools.map((x) => {
+    // the last value is below the cut-off: treat it as 0 so capped hit counts count as done
+    if (x.formula) {
+      const S = cached("poolS", [x.formula, tol], () => Array.from(poolNotMet(x.formula, tol)));
+      return { ...x, S: [...S.slice(0, -1), 0], cap: S.length - 1, states: S.length };
+    }
+    const r = cached("poolChainS", [x.chain, tol], () => poolChainNotMet(x.chain, tol));
+    return { ...x, S: [...r.S.slice(0, -1), 0], cap: r.S.length - 1, states: r.states };
+  });
+
+  const labels = labelsOf(tree, list, start);
+  return {
+    maxStates: opts.maxStates, reqs: list, labels, G, items, ic, pre, goalMode: opts.goalMode,
+    gap: timing?.gap ?? null, gap1: timing?.gap1 ?? null, outerStates: timing?.states ?? 0,
+  };
 }
 
-// Walks the event chain one event at a time, tracking hits per targeted outcome.
-// visit(m, cur, decode) is called after each event count m = 0, 1, …; return false to stop.
+// Walks the event chain one event at a time, tracking hits per targeted outcome (capped).
+// State index = eventState·W + Σ_g hits_g·stride_g. visit(m, cur, active, W) after each event count m.
 function walkEvents(plan, caps, visit) {
   const { ic } = plan;
-  const C1 = caps[0], C2 = caps[1] ?? 0, W = (C1 + 1) * (C2 + 1);
+  const K = caps.length, stride = new Array(K), radix = caps.map((c) => c + 1);
+  let W = 1;
+  for (let g = K - 1; g >= 0; g--) { stride[g] = W; W *= radix[g]; }
   const size = ic.N * W;
   // cells here are plain numbers with no stored transitions, ~10× cheaper than chain states
-  const limit = Math.min(10 * (plan.maxStates ?? 1e6), 2e7);
+  const limit = Math.min(10 * (plan.maxStates ?? 1e6), 4e7);
   if (size > limit)
     throw new Error(`Too big: ${size.toLocaleString("en")} states needed for the event layer (limit ${limit.toLocaleString("en")}).`);
   let cur = new Float64Array(size), next = new Float64Array(size);
   let active = [ic.startIndex * W], nextActive = [];
   const mark = new Int32Array(size).fill(-1);
   cur[ic.startIndex * W] = 1;
+  const geom = { W, stride, radix, K };
   for (let m = 0; ; m++) {
-    if (visit(m, cur, active, W, C2 + 1) === false) return;
+    if (visit(m, cur, active, geom) === false) return;
     for (const i of active) {
       const p = cur[i];
       cur[i] = 0;
       if (!p) continue;
-      const x = Math.floor(i / W), r = i % W, a = Math.floor(r / (C2 + 1)), b = r % (C2 + 1);
+      const x = Math.floor(i / W), r = i - x * W;
       for (let e = ic.rowStart[x]; e < ic.rowStart[x + 1]; e++) {
         const l = ic.lab[e];
-        const a2 = l === 1 ? Math.min(a + 1, C1) : a, b2 = l === 2 ? Math.min(b + 1, C2) : b;
-        const j = ic.col[e] * W + a2 * (C2 + 1) + b2;
+        let r2 = r;
+        if (l) {
+          const g = l - 1;
+          if (Math.floor(r / stride[g]) % radix[g] < caps[g]) r2 += stride[g];
+        }
+        const j = ic.col[e] * W + r2;
         if (mark[j] !== m) { mark[j] = m; nextActive.push(j); }
         next[j] += p * ic.prob[e];
       }
@@ -873,20 +984,33 @@ function walkEvents(plan, caps, visit) {
   }
 }
 
+// P(goal not met) for every combination of hits, from each group's "not met after n hits"
+function undoneTable(geom, notMet, goalMode) {
+  const { W, stride, radix, K } = geom;
+  const out = new Float64Array(W);
+  for (let r = 0; r < W; r++) {
+    let u = goalMode === "any" ? 1 : 0;
+    for (let g = 0; g < K; g++) {
+      const s = notMet[g][Math.floor(r / stride[g]) % radix[g]];
+      u = goalMode === "any" ? u * s : u + s - u * s; // all: 1 − ∏(1 − s) without cancellation
+    }
+    out[r] = u;
+  }
+  return out;
+}
+
 function solveLayered(plan, eps, maxPulls, onProgress) {
   const { items, gap, gap1, goalMode } = plan;
-  const S1 = items[0].S, S2 = items[1]?.S ?? [goalMode === "any" ? 1 : 0];
-  const undoneAt = (a, b) => (goalMode === "any" ? S1[a] * S2[b] : S1[a] + S2[b] - S1[a] * S2[b]);
 
   // How many events the goal needs: U[m] = P(M > m)
   const U = [];
-  walkEvents(plan, items.map((x) => x.cap), (m, cur, active, W, B1) => {
+  let table = null;
+  walkEvents(plan, items.map((x) => x.cap), (m, cur, active, geom) => {
+    table ??= undoneTable(geom, items.map((x) => x.S), goalMode);
     let u = 0;
     for (const i of active) {
       const p = cur[i];
-      if (!p) continue;
-      const r = i % W;
-      u += p * undoneAt(Math.floor(r / B1), r % B1);
+      if (p) u += p * table[i % geom.W];
     }
     U.push(Math.min(1, u));
     if (onProgress && (m & 15) === 0) onProgress({ phase: "calc", t: m, remaining: u, eps });
@@ -910,16 +1034,21 @@ function solveLayered(plan, eps, maxPulls, onProgress) {
     fft(gr, gi, false);
     fft(hr, hi, false);
     const outR = new Float64Array(L), outI = new Float64Array(L);
-    for (let z = 0; z < L; z++) {
+    const pMa = Float64Array.from(pM);
+    // inputs are real, so the value at L − z is the conjugate of the value at z: do half
+    for (let z = 0; z <= L / 2; z++) {
       // Σ_{m≥1} p_m · G1 · G^(m-1), by Horner
       let ar = 0, ai = 0;
+      const xr = gr[z], xi = gi[z];
       for (let m = Mmax; m >= 1; m--) {
-        const nr = ar * gr[z] - ai * gi[z] + pM[m], ni = ar * gi[z] + ai * gr[z];
-        ar = nr; ai = ni;
+        const nr = ar * xr - ai * xi + pMa[m];
+        ai = ar * xi + ai * xr;
+        ar = nr;
       }
-      outR[z] = ar * hr[z] - ai * hi[z] + pM[0];
+      outR[z] = ar * hr[z] - ai * hi[z] + pMa[0];
       outI[z] = ar * hi[z] + ai * hr[z];
-      if (onProgress && (z & 4095) === 0) onProgress({ phase: "budget", t: z, total: L });
+      if (z > 0 && z < L / 2) { outR[L - z] = outR[z]; outI[L - z] = -outI[z]; }
+      if (onProgress && (z & 4095) === 0) onProgress({ phase: "budget", t: z, total: L / 2 });
     }
     fft(outR, outI, true);
     pmfT = Array.from(outR.subarray(0, len), (v) => (v > 0 ? v : 0));
@@ -936,7 +1065,7 @@ function solveLayered(plan, eps, maxPulls, onProgress) {
   }
   return {
     pmf, survival, labels: plan.labels, worst: null,
-    states: plan.ic.N - 1 + (plan.oc ? plan.oc.N - 1 : 0) + items.reduce((s, x) => s + x.states, 0),
+    states: plan.ic.N - 1 + plan.outerStates + items.reduce((s, x) => s + x.states, 0),
     fullStates: null,
   };
 }
@@ -946,7 +1075,7 @@ function budgetLayered(plan, B) {
   const { items, gap, gap1, goalMode } = plan;
 
   // P(N(t) = m): how many events by pull t, for every t ≤ B
-  const Ccum = []; // Ccum[m][t] = P(event m has happened by pull t)
+  const Ccum = []; // Ccum[m][t] = P(event m+1 has happened by pull t)
   if (gap) {
     let tau = new Float64Array(B + 1);
     gap1.forEach((v, i) => { if (i <= B) tau[i] = v; });
@@ -969,59 +1098,37 @@ function budgetLayered(plan, B) {
   const mCount = Ccum.length; // events beyond this never happen within B pulls
   const pN = (t, m) => (m === 0 ? 1 : Ccum[m - 1][t]) - (m < mCount ? Ccum[m][t] : 0);
 
-  // Per item chain: progress of each row after n hits (as in budgetSplit), until fully maxed
-  const perGroup = items.map((x) => {
-    const mc = compile(x.miniTree, x.miniGoal, { ...x.miniOpts, absorb: false });
-    const prog = mc.reqs.map((r) => Int32Array.from(mc.states, (s, k) => (k === 0 ? 0 : mc.progress(r, s))));
-    const D = mc.reqs.map(() => []), E = mc.reqs.map(() => []), G = [];
-    let cur = new Float64Array(mc.N), next = new Float64Array(mc.N);
-    cur[mc.startIndex] = 1;
-    const maxed = Uint8Array.from(mc.states, (s, k) => (k > 0 && mc.reqs.every((r, i) => prog[i][k] >= r.max) ? 1 : 0));
-    for (let n = 0; n <= mCount; n++) {
-      let g = 0;
-      mc.reqs.forEach((r, i) => {
-        const d = new Float64Array(r.max + 1);
-        let e = 0;
-        for (let k = 1; k < mc.N; k++) if (cur[k]) { d[prog[i][k]] += cur[k]; e += cur[k] * prog[i][k]; }
-        D[i].push(d); E[i].push(e);
-      });
-      for (let k = 1; k < mc.N; k++) if (cur[k] && !mc.isDone(mc.states[k])) g += cur[k];
-      G.push(g); // P(this pool's rows not yet met after n hits)
-      // past the point where every row is maxed out nothing changes: more hits can be clamped
-      let notMaxed = 0;
-      for (let k = 1; k < mc.N; k++) if (cur[k] && !maxed[k]) notMaxed += cur[k];
-      if (notMaxed < 1e-15) break;
-      advance(cur, next, mc.N, mc.rowStart, mc.col, mc.prob);
-      [cur, next] = [next, cur];
-    }
-    return { reqs: mc.reqs, D, E, G };
-  });
+  // Per pool: progress of each row after n hits, until every row is maxed out
+  const perGroup = items.map((x) => (x.formula
+    ? cached("poolBudget", [x.formula, mCount], () => poolBudget(x.formula, mCount))
+    : cached("poolChainBudget", [x.chain, mCount], () => poolChainBudget(x.chain, mCount))));
 
-  // Per event count m: distribution of hits on each targeted outcome
+  // Per event count m: distribution of hits on each pool, and the chance the goal is met
   const caps = perGroup.map((x) => x.G.length - 1);
-  const hitDist = []; // hitDist[m] = [marginal over n for group 0, for group 1], and goal chance
-  walkEvents(plan, caps, (m, cur, active, W, B1) => {
-    const g0 = new Float64Array(mCount + 1), g1 = new Float64Array(mCount + 1);
-    let done = 0;
+  const hitDist = [];
+  let table = null;
+  walkEvents(plan, caps, (m, cur, active, geom) => {
+    table ??= undoneTable(geom, perGroup.map((x) => x.G), goalMode);
+    const g = caps.map((c) => new Float64Array(c + 1));
+    let undone = 0;
     for (const i of active) {
       const p = cur[i];
       if (!p) continue;
-      const r = i % W, a = Math.floor(r / B1), b = r % B1;
-      g0[a] += p; g1[b] += p;
-      const u0 = perGroup[0].G[a], u1 = perGroup[1] ? perGroup[1].G[b] : (goalMode === "any" ? 1 : 0);
-      done += p * (1 - (goalMode === "any" ? u0 * u1 : u0 + u1 - u0 * u1));
+      const r = i % geom.W;
+      undone += p * table[r];
+      for (let k = 0; k < geom.K; k++) g[k][Math.floor(r / geom.stride[k]) % geom.radix[k]] += p;
     }
-    hitDist.push({ g: [g0, g1], done });
+    hitDist.push({ g, done: 1 - undone });
     return m < mCount;
   });
 
   // Rows, in the goal's order
   const order = [];
-  plan.G.forEach((grp, gi) => grp.idx.forEach((orig, i) => { order[orig] = { gi, i, r: perGroup[gi].reqs[i] }; }));
+  plan.G.forEach((grp, gi) => grp.idx.forEach((orig, i) => { order[orig] = { gi, i, r: rowInfo(grp.reqs[i], grp.alt) }; }));
 
   const expectedByPull = order.map(() => new Float64Array(B + 1));
   const goalByPull = new Float64Array(B + 1);
-  const Em = order.map(({ gi, i }) => hitDist.map((h) => h.g[gi].reduce((s, p, n) => s + p * perGroup[gi].E[i][Math.min(n, perGroup[gi].E[i].length - 1)], 0)));
+  const Em = order.map(({ gi, i }) => hitDist.map((h) => h.g[gi].reduce((s, p, n) => s + p * perGroup[gi].E[i][n], 0)));
   for (let t = 0; t <= B; t++) {
     for (let m = 0; m <= mCount && m < hitDist.length; m++) {
       const p = pN(t, m);
@@ -1041,15 +1148,15 @@ function budgetLayered(plan, B) {
         if (!p) continue;
         hitDist[m].g[gi].forEach((q, n) => {
           if (!q) return;
-          const d = perGroup[gi].D[i][Math.min(n, perGroup[gi].D[i].length - 1)];
-          for (let v = 0; v < d.length; v++) dist[v] += p * q * d[v];
+          const d = perGroup[gi].D[i][n];
+          for (let v = 0; v < d.length && v <= r.max; v++) dist[v] += p * q * d[v];
         });
       }
       const target = r.type === "distinct" ? r.k : r.copies;
       let chanceMet = 0;
       for (let v = target; v <= r.max; v++) chanceMet += dist[v];
       return {
-        label: r.label, type: r.type, copies: r.copies,
+        label: plan.labels[k], type: r.type, copies: r.copies,
         unit: r.type === "distinct" ? `items with ≥${r.copies} copies` : "copies",
         target, dist, mean: expectedByPull[k][B], chanceMet, expectedByPull: expectedByPull[k],
       };
@@ -1057,7 +1164,35 @@ function budgetLayered(plan, B) {
   };
 }
 
+// Type, target and largest progress of a row (as the chain reports them)
+function rowInfo(req, alt) {
+  const type = req.type ?? "total";
+  const copies = req.copies ?? 1;
+  if (type === "distinct") return { type, copies, k: req.k, max: Array.isArray(req.items) ? new Set(req.items).size : alt.count };
+  return { type: type === "specific" && alt.count === 1 ? "total" : type, copies, max: copies };
+}
+
 // ── Solve ─────────────────────────────────────────────────────────────────────
+// Method choice (all exact; they differ in speed):
+//   layered — rows on up to 7 pools/outcomes under an event that restarts the banner (SSR):
+//             pool formulas + event chain + FFT over the gaps. Chosen unless the joint chain is tiny.
+//   split   — rows on one pool when the banner doesn't restart at each event.
+//   joint   — everything tracked together; tiny goals (gives the exact worst case) and the rest.
+function choosePlan({ tree, goal, goalMode, start, eps, maxStates, method, onProgress }) {
+  const orig = { tree, goal, start };
+  const lp = method === "auto" || method === "layered"
+    ? cached("planLayered", [tree, goal, start, goalMode, maxStates, eps, method], () => planLayered(tree, goal, { start, goalMode, maxStates }, eps, method === "layered"))
+    : null;
+  const small = !!lp?.small, layered = small ? null : lp;
+  if (method === "layered" && !layered) throw new Error(`method "layered" needs every row on one pool or single outcome (up to ${MAX_GROUPS} of them), under an event that restarts the banner`);
+  const split = !layered && !(small && method === "auto") && (method === "auto" || method === "split")
+    ? cached("planSplit", [tree, goal, start, goalMode, maxStates, eps, method], () => planSplit(tree, goal, { start, goalMode, maxStates }, eps, method === "split"))
+    : null;
+  if (method === "split" && !split) throw new Error(`method "split" needs all requirements on one pool`);
+  const ex = expandSubsets(tree, goal, start);
+  return { layered, split, orig, tree: ex.tree, goal: ex.goal, opts: { start: ex.start, goalMode, maxStates, onProgress } };
+}
+
 export function solve({
   tree,
   goal,
@@ -1073,37 +1208,31 @@ export function solve({
   onProgress = null,  // optional callback: { phase: "build" | "calc" | "budget", ... }
 }) {
   const t0 = now();
-  const layered = method === "auto" || method === "layered"
-    ? planLayered(tree, goal, { start, goalMode, maxStates }, eps, method === "layered") : null;
-  if (method === "layered" && !layered) throw new Error(`method "layered" needs every row on one pool or outcome, at most two of them, under an event that resets the banner`);
-  ({ tree, goal, start } = expandSubsets(tree, goal, start));
-  const opts = { start, goalMode, maxStates, onProgress };
-  const split = layered || method === "joint" ? null : planSplit(tree, goal, opts, eps, method === "split");
-  if (method === "split" && !split) throw new Error(`method "split" needs all requirements on one pool`);
+  const { layered, split, opts, tree: exTree, goal: exGoal, orig } = choosePlan({ tree, goal, goalMode, start, eps, maxStates, method, onProgress });
 
+  // the distribution doesn't depend on the budget: changing only the budget reuses it
+  const distKey = [tree, goal, start, goalMode, maxStates, eps, method, maxPulls];
   let res;
-  if (layered) res = solveLayered(layered, eps, maxPulls, onProgress);
-  else if (split) res = solveSplit(tree, split, opts, eps, maxPulls);
+  if (layered) res = cached("distLayered", distKey, () => solveLayered(layered, eps, maxPulls, onProgress));
+  else if (split) res = cached("distSplit", distKey, () => solveSplit(orig.tree, split, { ...opts, start: orig.start }, eps, maxPulls));
   else {
-    const c = compile(tree, goal, opts);
-    const { N, rowStart, col, prob, startIndex } = c;
+    // the distribution only needs "is the goal met": merge same-target named items first
+    const merged = expandSubsets(orig.tree, mergeNamedRows(orig.tree, orig.goal, goalMode), orig.start);
+    const c = compile(merged.tree, merged.goal, { ...opts, start: merged.start });
+    const { N, startIndex } = c;
     const pmf = [startIndex === 0 ? 1 : 0];
     const survival = [startIndex === 0 ? 0 : 1];
-    let cur = new Float64Array(N), next = new Float64Array(N);
-    cur[startIndex] = 1;
+    const st = makeStepper(c);
     let t = 0, remaining = survival[0];
     while (remaining > 0 && remaining >= eps && t < maxPulls) {
       if (onProgress && (t & 15) === 0) onProgress({ phase: "calc", t, remaining, eps });
-      advance(cur, next, N, rowStart, col, prob);
+      pmf.push(st.step());
       t++;
-      pmf.push(next[0]);
-      next[0] = 0;
-      remaining = 0;
-      for (let k = 1; k < N; k++) remaining += next[k];
+      remaining = st.remaining;
       survival.push(remaining);
-      [cur, next] = [next, cur];
     }
-    res = { pmf, survival, labels: c.reqs.map((r) => r.label), states: N - 1, fullStates: c.fullStates, worst: c.worst };
+    st.close();
+    res = { pmf, survival, labels: labelsOf(orig.tree, goalList(orig.goal), orig.start), states: N - 1, fullStates: c.fullStates, worst: c.worst };
   }
 
   const { pmf, survival } = res;
@@ -1136,8 +1265,8 @@ export function solve({
     cdf,                                // chart: P(goal met within t pulls)
     budget: budget == null ? null
       : layered ? budgetLayered(layered, budget)
-      : split ? budgetSplit(tree, split, opts, budget)
-      : budgetReport(tree, goal, opts, budget),
+      : split ? budgetSplit(orig.tree, split, { ...opts, start: orig.start }, budget)
+      : budgetReport(exTree, exGoal, opts, budget),
     method: layered ? "layered" : split ? "split" : "joint",
     states: res.states,
     statesBeforeReduction: res.fullStates,
@@ -1145,99 +1274,97 @@ export function solve({
   };
 }
 
-// ── Split method ─────────────────────────────────────────────────────────────
-// When every requirement is about items of one pool, which item a pull gives never
-// affects the banner (pity, streaks). So: (a) work out, on a tiny chain, the chance
-// the goal is met after n hits on the pool; (b) work out, on the banner chain, the
-// distribution of how many hits the pool has after t pulls; combine. Exact; used
-// when it needs fewer states than tracking everything together.
-function planSplit(tree, goal, opts, eps, force) {
-  const root = normaliseNode(tree, []);
-  const reqs = parseGoal(root, goal);
-  if (!reqs.every((r) => r.type === "specific" || (r.type === "distinct" && r.groups.length === 1))) return null;
-  const pools = new Set(reqs.map((r) => pathKey(r.type === "specific" ? r.group.path : r.groups[0].path)));
-  if (pools.size !== 1) return null;
-  const poolPath = [...pools][0].split(",").map(Number);
-  const pool = findAlt(root, poolPath);
-
-  const miniTree = [{ p: 1, count: pool.count }];
-  const miniGoal = reqs.map((r) => ({ path: "0", type: r.type, item: r.item, copies: r.copies, k: r.k, label: r.label }));
-  const owned = Object.entries(opts.start.owned ?? {}).find(([k]) => pathKey(resolvePath(root, k)) === pathKey(poolPath));
-  const miniOpts = { goalMode: opts.goalMode, maxStates: opts.maxStates, start: owned ? { owned: { "0": owned[1] } } : {} };
-
-  // F[n] = P(goal met after n hits on the pool)
-  const mc = compile(miniTree, miniGoal, miniOpts);
-  const F = [mc.startIndex === 0 ? 1 : 0];
-  let cur = new Float64Array(mc.N), next = new Float64Array(mc.N), miss = 1 - F[0];
-  cur[mc.startIndex] = 1;
-  while (miss > 0 && miss >= eps / 10 && F.length < 1e5) {
-    advance(cur, next, mc.N, mc.rowStart, mc.col, mc.prob);
-    next[0] = 0;
-    miss = 0;
-    for (let k = 1; k < mc.N; k++) miss += next[k];
-    F.push(1 - miss);
-    [cur, next] = [next, cur];
+// Joint chain only: "specific" rows on one pool with the same copies become one
+// "k different of these items" row (k = all of them, or 1 in "any" mode). Same goal,
+// but a copy histogram replaces one counter per item: (c+1)^m states → C(m+c, c).
+function mergeNamedRows(tree, goal, goalMode) {
+  const list = goalList(goal);
+  const root = normaliseNode(canonTree(tree), []);
+  const groups = new Map();
+  list.forEach((g, i) => {
+    if ((g.type ?? "total") !== "specific" || g.paths) return;
+    const path = resolvePath(root, g.path);
+    const alt = findAlt(root, path);
+    if (!alt || alt.child || alt.count < 2) return;
+    const key = `${pathKey(path)}|${g.copies ?? 1}`;
+    if (!groups.has(key)) groups.set(key, { alt, rows: [] });
+    groups.get(key).rows.push(i);
+  });
+  const drop = new Set(), add = [];
+  for (const { alt, rows } of groups.values()) {
+    if (rows.length < 2) continue;
+    const items = [...new Set(rows.map((i) => resolveItem(alt, list[i].item ?? 0, list[i].path)))];
+    rows.forEach((i) => drop.add(i));
+    const g0 = list[rows[0]];
+    add.push({ path: g0.path, type: "distinct", items, k: goalMode === "any" ? 1 : items.length, copies: g0.copies ?? 1 });
   }
-  const nMax = F.length - 1;
-  const itemsGuaranteed = worstCase(mc, mc.startIndex) != null;
-  if (!force && nMax >= mc.N - 1) return null; // tracking items directly is smaller
-  return { reqs, poolPath, nMax, F, itemsGuaranteed, miniTree, miniGoal, miniOpts, labels: reqs.map((r) => r.label) };
+  return add.length ? [...list.filter((_, i) => !drop.has(i)), ...add] : list;
+}
+
+// ── Split method ─────────────────────────────────────────────────────────────
+// When every row is about one pool, which item a hit gives never affects the banner
+// (pity, streaks). So: (a) the pool formulas give P(goal not met after n hits); (b) the banner
+// chain gives the distribution of hits on the pool after t pulls; combine. Exact. Used when the
+// layered method doesn't fit (the banner doesn't restart at each event).
+function planSplit(tree, goal, opts, eps, force) {
+  const list = goalList(goal);
+  const root = normaliseNode(tree, []);
+  const G = groupRows(root, list);
+  if (!G || G.length !== 1) return null;
+  const x = G[0];
+  const ownedVal = ownedFor(root, opts.start, x);
+  const fp = poolPlanFor(x, ownedVal, opts.goalMode);
+  const chain = fp ? null : poolChain(x, ownedVal, opts);
+  const tol = eps / 1000;
+  let S, itemsWorst = null;
+  if (fp) {
+    S = Array.from(cached("poolS", [fp, tol], () => poolNotMet(fp, tol)));
+    itemsWorst = fp.worstHits ?? null;
+  } else {
+    S = cached("poolChainS", [chain, tol], () => poolChainNotMet(chain, tol)).S.slice();
+  }
+  S[S.length - 1] = 0;
+  // split tracks banner × hits (up to nMax); joint tracks banner × item counters: pick the smaller
+  if (!force && fp && 4 * S.length >= chainSizeEstimate(fp)) return null;
+  return {
+    formula: fp, chain, S, nMax: S.length - 1, poolPath: x.path, alt: x.alt, reqs: x.reqs,
+    itemsGuaranteed: itemsWorst != null, labels: labelsOf(tree, list, opts.start),
+  };
 }
 
 function solveSplit(tree, plan, opts, eps, maxPulls) {
-  const { nMax, F, poolPath } = plan;
+  const { nMax, S, poolPath } = plan;
   const bannerStart = { pity: opts.start.pity, streak: opts.start.streak };
   if (nMax === 0) return { pmf: [1], survival: [0], labels: plan.labels, states: 0, fullStates: 0, worst: 0 };
   // Banner chain counting hits on the pool, up to nMax (state 0 = "nMax or more")
-  const c = compile(tree, [{ path: poolPath, copies: nMax }], { start: bannerStart, maxStates: opts.maxStates, onProgress: opts.onProgress });
-  const { N, rowStart, col, prob, startIndex, states } = c;
-  const miss = Float64Array.from(states, (s, k) => (k === 0 ? 1 - F[nMax] : 1 - F[c.progress(c.reqs[0], s)]));
-  let cur = new Float64Array(N), next = new Float64Array(N);
-  cur[startIndex] = 1;
-  let sink = startIndex === 0 ? 1 : 0;
-  const S = () => { let m = sink * miss[0]; for (let k = 1; k < N; k++) if (cur[k]) m += cur[k] * miss[k]; return m; };
-  const survival = [S()], pmf = [1 - survival[0]];
+  const c = cached("splitChain", [tree, poolPath, nMax, bannerStart, opts.maxStates], () =>
+    compile(tree, [{ path: poolPath, copies: nMax }], { start: bannerStart, maxStates: opts.maxStates, onProgress: opts.onProgress }));
+  const { N, states } = c;
+  const st = makeStepper(c);
+  const miss = st.weights(Float64Array.from(states, (s, k) => (k === 0 ? 0 : S[c.progress(c.reqs[0], s)])));
+  const sumMiss = () => st.dot(miss);
+  const survival = [sumMiss()], pmf = [1 - survival[0]];
   let t = 0, remaining = survival[0];
   while (remaining > 0 && remaining >= eps && t < maxPulls) {
     if (opts.onProgress && (t & 15) === 0) opts.onProgress({ phase: "calc", t, remaining, eps });
-    advance(cur, next, N, rowStart, col, prob);
-    sink += next[0];
-    next[0] = 0;
-    [cur, next] = [next, cur];
+    st.step(); // mass reaching state 0 has ≥ nMax hits: goal met for sure
     t++;
-    remaining = S();
-    pmf.push(survival[t - 1] - remaining);
+    remaining = sumMiss();
+    pmf.push(Math.max(0, survival[t - 1] - remaining));
     survival.push(remaining);
   }
+  st.close();
   // Guaranteed only if the item part is (then nMax is exactly the most hits ever needed)
-  return { pmf, survival, labels: plan.labels, states: N - 1 + (plan.F.length), fullStates: c.fullStates, worst: plan.itemsGuaranteed ? c.worst : null };
+  return { pmf, survival, labels: plan.labels, states: N - 1 + nMax, fullStates: c.fullStates, worst: plan.itemsGuaranteed ? c.worst : null };
 }
 
 function budgetSplit(tree, plan, opts, B) {
   if (!(Number.isInteger(B) && B >= 0)) throw new Error("budget must be a whole number of pulls ≥ 0");
-  // Per number of hits n: each requirement's progress distribution and the goal chance
-  const mc = compile(plan.miniTree, plan.miniGoal, { ...plan.miniOpts, absorb: false });
-  const reqs = mc.reqs;
-  const prog = reqs.map((r) => Int32Array.from(mc.states, (s, k) => (k === 0 ? 0 : mc.progress(r, s))));
-  const maxed = Uint8Array.from(mc.states, (s, k) => (k > 0 && reqs.every((r, i) => prog[i][k] >= r.max) ? 1 : 0));
-  const doneAt = Uint8Array.from(mc.states, (s, k) => (k > 0 && mc.isDone(s) ? 1 : 0));
-  const D = reqs.map(() => []), E = reqs.map(() => []), G = [];
-  let cur = new Float64Array(mc.N), next = new Float64Array(mc.N);
-  cur[mc.startIndex] = 1;
-  for (let n = 0; ; n++) {
-    let full = 0, g = 0;
-    reqs.forEach((r, i) => {
-      const d = new Float64Array(r.max + 1);
-      let e = 0;
-      for (let k = 1; k < mc.N; k++) if (cur[k]) { d[prog[i][k]] += cur[k]; e += cur[k] * prog[i][k]; }
-      D[i].push(d); E[i].push(e);
-    });
-    for (let k = 1; k < mc.N; k++) if (cur[k]) { if (maxed[k]) full += cur[k]; if (doneAt[k]) g += cur[k]; }
-    G.push(g);
-    if (full >= 1 - 1e-12 || n >= 1e5) break;
-    advance(cur, next, mc.N, mc.rowStart, mc.col, mc.prob);
-    [cur, next] = [next, cur];
-  }
+  // Per number of hits n ≤ B: each row's progress distribution and the goal chance
+  const { D, E, G } = plan.formula
+    ? cached("poolBudget", [plan.formula, B], () => poolBudget(plan.formula, B))
+    : cached("poolChainBudget", [plan.chain, B], () => poolChainBudget(plan.chain, B));
+  const reqs = plan.reqs.map((r) => rowInfo(r, plan.alt));
   const nB = G.length - 1;
 
   // Banner chain: distribution of hits on the pool for every pull 0..B
@@ -1245,36 +1372,33 @@ function budgetSplit(tree, plan, opts, B) {
   const expectedByPull = reqs.map(() => new Float64Array(B + 1));
   const goalByPull = new Float64Array(B + 1);
   const dist = reqs.map((r) => new Float64Array(r.max + 1));
+  const addD = (i, m, h) => { const d = D[i][h]; for (let v = 0; v < d.length && v <= reqs[i].max; v++) dist[i][v] += m * d[v]; };
   if (nB === 0) {
-    reqs.forEach((r, i) => { expectedByPull[i].fill(E[i][0]); dist[i].set(D[i][0]); });
-    goalByPull.fill(G[0]);
+    reqs.forEach((r, i) => { expectedByPull[i].fill(E[i][0]); addD(i, 1, 0); });
+    goalByPull.fill(1 - G[0]);
   } else {
     const c = compile(tree, [{ path: plan.poolPath, copies: nB }], { start: bannerStart, maxStates: opts.maxStates, onProgress: opts.onProgress });
-    const { N, rowStart, col, prob, startIndex, states } = c;
+    const { N, startIndex, states } = c;
     const hits = Int32Array.from(states, (s, k) => (k === 0 ? nB : c.progress(c.reqs[0], s)));
-    let bc = new Float64Array(N), bn = new Float64Array(N), sink = startIndex === 0 ? 1 : 0;
-    bc[startIndex] = 1;
+    const st = makeStepper(c);
+    const wE = reqs.map((_, i) => st.weights(Float64Array.from(hits, (h) => E[i][h])));
+    const wG = st.weights(Float64Array.from(hits, (h) => 1 - G[h]));
+    let sink = startIndex === 0 ? 1 : 0;
     const record = (t) => {
-      const add = (m, h) => {
-        for (let i = 0; i < reqs.length; i++) expectedByPull[i][t] += m * E[i][h];
-        goalByPull[t] += m * G[h];
-      };
-      if (sink) add(sink, nB);
-      for (let k = 1; k < N; k++) if (bc[k]) add(bc[k], hits[k]);
+      for (let i = 0; i < reqs.length; i++) expectedByPull[i][t] = st.dot(wE[i]) + sink * E[i][nB];
+      goalByPull[t] = st.dot(wG) + sink * (1 - G[nB]);
     };
     record(0);
     for (let t = 1; t <= B; t++) {
       if (opts.onProgress && (t & 15) === 0) opts.onProgress({ phase: "budget", t, total: B });
-      advance(bc, bn, N, rowStart, col, prob);
-      sink += bn[0];
-      bn[0] = 0;
-      [bc, bn] = [bn, bc];
+      sink += st.step();
       record(t);
     }
+    st.close();
+    const bc = st.cur;
     for (let i = 0; i < reqs.length; i++) {
-      const addD = (m, h) => { const d = D[i][h]; for (let v = 0; v < d.length; v++) dist[i][v] += m * d[v]; };
-      if (sink) addD(sink, nB);
-      for (let k = 1; k < N; k++) if (bc[k]) addD(bc[k], hits[k]);
+      if (sink) addD(i, sink, nB);
+      for (let k = 1; k < N; k++) if (bc[k]) addD(i, bc[k], hits[k]);
     }
   }
   return {
@@ -1286,7 +1410,7 @@ function budgetSplit(tree, plan, opts, B) {
       let chanceMet = 0;
       for (let v = target; v <= r.max; v++) chanceMet += dist[i][v];
       return {
-        label: r.label,
+        label: plan.labels[i],
         type: r.type, copies: r.copies,
         unit: r.type === "distinct" ? `items with ≥${r.copies} copies` : "copies",
         target, dist: dist[i], mean: expectedByPull[i][B], chanceMet, expectedByPull: expectedByPull[i],
@@ -1300,29 +1424,26 @@ function budgetSplit(tree, plan, opts, B) {
 function budgetReport(tree, goal, opts, B) {
   if (!(Number.isInteger(B) && B >= 0)) throw new Error("budget must be a whole number of pulls ≥ 0");
   const c = compile(tree, goal, { ...opts, absorb: false });
-  const { N, rowStart, col, prob, startIndex, states, reqs } = c;
+  const { N, states, reqs } = c;
   const prog = reqs.map((r) => Int32Array.from(states, (s, k) => (k === 0 ? 0 : c.progress(r, s))));
-  const doneAt = Uint8Array.from(states, (s, k) => (k > 0 && c.isDone(s) ? 1 : 0));
   const expectedByPull = reqs.map(() => new Float64Array(B + 1));
   const goalByPull = new Float64Array(B + 1);
 
-  let cur = new Float64Array(N), next = new Float64Array(N);
-  cur[startIndex] = 1;
+  const st = makeStepper(c);
+  const wProg = prog.map((p) => st.weights(Float64Array.from(p)));
+  const wDone = st.weights(Float64Array.from(states, (s, k) => (k > 0 && c.isDone(s) ? 1 : 0)));
   const record = (t) => {
-    for (let k = 1; k < N; k++) {
-      const m = cur[k];
-      if (m === 0) continue;
-      for (let r = 0; r < reqs.length; r++) expectedByPull[r][t] += m * prog[r][k];
-      if (doneAt[k]) goalByPull[t] += m;
-    }
+    for (let r = 0; r < reqs.length; r++) expectedByPull[r][t] = st.dot(wProg[r]);
+    goalByPull[t] = st.dot(wDone);
   };
   record(0);
   for (let t = 1; t <= B; t++) {
     if (opts.onProgress && (t & 15) === 0) opts.onProgress({ phase: "budget", t, total: B });
-    advance(cur, next, N, rowStart, col, prob);
-    [cur, next] = [next, cur];
+    st.step();
     record(t);
   }
+  st.close();
+  const cur = st.cur;
   return {
     pulls: B,
     chanceGoal: goalByPull[B],          // P(goal met after B pulls)
@@ -1349,12 +1470,8 @@ function budgetReport(tree, goal, opts, B) {
 
 // Budget report only ("what will I get with B pulls"), without the pulls-to-goal part.
 export function budgetOnly({ tree, goal, goalMode = "all", start = {}, budget, eps = 1e-13, maxStates = 1e6, method = "auto", onProgress = null }) {
-  const layered = method === "auto" || method === "layered"
-    ? planLayered(tree, goal, { start, goalMode, maxStates }, eps, method === "layered") : null;
+  const { layered, split, opts, tree: exTree, goal: exGoal, orig } = choosePlan({ tree, goal, goalMode, start, eps, maxStates, method, onProgress });
   if (layered) return budgetLayered(layered, budget);
-  if (method === "layered") throw new Error(`method "layered" doesn't fit this goal`);
-  ({ tree, goal, start } = expandSubsets(tree, goal, start));
-  const opts = { start, goalMode, maxStates, onProgress };
-  const split = method === "joint" ? null : planSplit(tree, goal, opts, eps, method === "split");
-  return split ? budgetSplit(tree, split, opts, budget) : budgetReport(tree, goal, opts, budget);
+  if (split) return budgetSplit(orig.tree, split, { ...opts, start: orig.start }, budget);
+  return budgetReport(exTree, exGoal, opts, budget);
 }
