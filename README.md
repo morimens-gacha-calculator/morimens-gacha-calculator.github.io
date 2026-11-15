@@ -39,6 +39,8 @@ test fails) and on pull requests.
 | `src/engine/joint.js`, `split.js`, `layered.js` | The three exact methods (see the top of each file) |
 | `src/engine/pool-formulas.js`, `pools.js` | Exact formulas for which items a pool gives |
 | `src/engine/renewal.js` | FFT and "SSRs by pull" helpers of the layered method |
+| `src/engine/renewal-matrix.js` | The same for banners whose counters keep running through SSRs (matrices of gaps) |
+| `src/engine/worst.js` | Exact worst case ("guaranteed by") for every method |
 | `src/engine/chain-step.js`, `step-thread*.js`, `*.wat` | Fast chain stepping (WebAssembly, several cores). After editing a `.wat` file, run `npm run build:wasm` (it regenerates `wasm-kernels.js`; `npm test` fails if you forget) |
 | `src/engine/cache.js` | Reusing pieces between calculations |
 | `src/engine/settings.js` | Every accuracy setting, limit and speed trade-off, with the reason for its value |
@@ -46,6 +48,8 @@ test fails) and on pull requests.
 | `tests/` | Engine tests (`npm test`) |
 | `src/useEngine.js` | React hook: debounced, cancellable calls to the worker |
 | `src/model.js` | Editor model ↔ engine format, presets, building queries |
+| `src/share.js` | Shareable links (the setup packed after `#s=`) |
+| `src/export.js` | CSV and chart image downloads |
 | `src/components/` | UI: preset nav, setup card (pity / banner rules / settings), pull plan, question, chart, stats, tables |
 | `src/styles.css` | All styling (colour tokens for both themes at the top) |
 | `src/i18n/en.js` | Every piece of interface text |

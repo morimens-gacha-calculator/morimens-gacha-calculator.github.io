@@ -499,3 +499,15 @@ input[type="number"]::-webkit-outer-spin-button, input[type="number"]::-webkit-i
   .picker-btn { max-width: none; width: 100%; }
   .item-pop { left: 12px; right: 12px; width: auto; }
 }
+
+/* Share: the link shown to copy by hand when the clipboard isn't available */
+.share-manual { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.share-url { flex: 1 1 260px; min-width: 0; font-size: 0.85em; }
+
+/* Export menu */
+.toolbar-menus { gap: 6px; flex-wrap: nowrap; }
+.toolbar-menus .lines-menu:last-child .lines-pop { right: 0; left: auto; }
+.menu-item { display: block; width: 100%; text-align: left; background: none; border: 0; border-radius: 8px; padding: 7px 10px; color: var(--ink); cursor: pointer; font: inherit; font-size: 13.5px; white-space: nowrap; }
+.menu-item:hover:not(:disabled), .menu-item:focus-visible { background: var(--blue-soft); }
+.menu-item:disabled { color: var(--ink-2); cursor: default; }
+.chip-tab:disabled { opacity: 0.5; cursor: default; }

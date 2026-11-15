@@ -44,6 +44,8 @@ export const MAX_EVENT_CELLS = 4e7;
 export const MAX_EVENTS = 1e6;               // events (SSRs) a goal may need
 export const MAX_PULL_SPAN = 1 << 23;        // pulls the layered result may span (FFT length)
 export const MAX_FFT_LENGTH = 1 << 24;       // FFT length for a budget report
+export const MAX_ENTRY_STATES = 64;         // layered method: banner states an event can leave you in
+export const MAX_TIMING_BYTES = 600e6;       // and the memory for their gap transforms (J² per frequency)
 export const MAX_POOL_HITS = 32768;          // hits a pool formula may need
 export const MAX_CHAIN_HITS = 1e5;           // the same, for the small-chain fallback
 export const MAX_GAP = 1e6;                  // pulls between two events
@@ -55,6 +57,7 @@ export const MAX_GROUPS = 7;                 // pools in the layered method (tra
 export const TINY_JOINT_CHAIN = 3000;
 // The split method is used only if (hits it tracks) × this < estimated joint states per pool.
 export const SPLIT_ADVANTAGE = 4;
+export const MATRIX_TIMING_COST = 0.5;       // layered with J states after an event: joint chains up to TINY·this·J count as tiny
 
 // ── Speed ───────────────────────────────────────────────────────────────────────────────────
 export const CACHE_MAX_BYTES = 200e6;        // memory the kept pieces may take together (~200 MB)

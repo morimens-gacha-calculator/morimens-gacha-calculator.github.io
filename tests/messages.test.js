@@ -18,7 +18,7 @@ test("the engine raises only coded errors", () => {
   }
 });
 
-const sample = { where: "SSR › character", value: "abc", sum: 0.95, row: "Lily ×2", item: "Lily", count: 15, items: 3, k: 5, limit: 1000000, n: 12424326, groups: 7, detail: "test detail" };
+const sample = { where: "SSR › character", value: "abc", sum: 0.95, row: "Lily ×2", item: "Lily", count: 15, items: 3, k: 5, limit: 1000000, n: 12424326, groups: 7, entries: 64, mb: 900, detail: "test detail" };
 for (const [lang, T] of Object.entries(LOCALES)) {
   test(`every engine error has a ${lang} text`, () => {
     for (const code of codes) {

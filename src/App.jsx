@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { freshState, newId, presets, reqLabel, withPresetNames, setPrecision, DEFAULT_SETTINGS } from "./model.js";
 import { useEngine } from "./useEngine.js";
+import { decodeSetup, linkCode, makeShareLink } from "./share.js";
 import { useCompare } from "./useCompare.js";
 import { I18nContext, LOCALES, browserLocale, setLocale } from "./i18n/index.js";
 import { BACKGROUND, DEFAULT_THEME, DEFAULT_PRESET, SITE_NAME, BANNERS_PATCH, SOURCE_URL } from "./site.config.js";
@@ -66,7 +67,9 @@ export default function App() {
     return presets()[s.preset] ? withPresetNames(restored) : { ...restored, preset: "custom" };
   });
   const [tabRequest, setTabRequest] = useState(null);
-  const [undoState, setUndoState] = useState(null); // the setup from just before a Reset
+  const [undoState, setUndoState] = useState(null); // the setup from just before a Reset or a shared link
+  const [undoKind, setUndoKind] = useState("reset");
+  const [linkError, setLinkError] = useState(false);
   const [compare, setCompare] = useState(() => load(COMPARE_KEY, (c) => c && Array.isArray(c.items)) ?? { items: [], budget: 600 });
   const [theme, setTheme] = useState(loadTheme);
   const [showHelp, setShowHelp] = useState(true);
@@ -105,14 +108,28 @@ export default function App() {
   // Reset puts the current banner's rules, plan and pity back to defaults; Undo restores them
   const resetBanner = () => {
     setUndoState(state);
+    setUndoKind("reset");
     setState((s) => ({ ...freshState(presets()[s.preset] ? s.preset : "custom"), mode: s.mode, desired: s.desired, chartLines: s.chartLines }));
   };
   const undoReset = () => { if (undoState) setState(undoState); setUndoState(null); };
   useEffect(() => {
     if (!undoState) return undefined;
-    const t = setTimeout(() => setUndoState(null), 15000);
+    const t = setTimeout(() => setUndoState(null), undoKind === "shared" ? 30000 : 15000);
     return () => clearTimeout(t);
-  }, [undoState]);
+  }, [undoState, undoKind]);
+
+  // Opening a shared link (#s=…) loads its setup; Undo brings back your own. The link is then
+  // taken out of the address, so reloading keeps whatever you change afterwards.
+  useEffect(() => {
+    const code = linkCode(window.location.hash);
+    if (!code) return;
+    const own = state;
+    decodeSetup(code)
+      .then((shared) => { setUndoState(own); setUndoKind("shared"); setState(withPresetNames(shared)); })
+      .catch(() => setLinkError(true))
+      .finally(() => window.history.replaceState(null, "", window.location.pathname + window.location.search));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Picking a preset loads it fresh; picking "Custom banner" brings back your own banner
   const pickBanner = (key) => {
@@ -160,7 +177,8 @@ export default function App() {
             </div>
 
             <BannerPicker current={state.preset} hint={P[state.preset]?.hint ?? T.app.customHint} onPick={pickBanner}
-              onReset={resetBanner} canUndo={!!undoState} onUndo={undoReset} />
+              onReset={resetBanner} canUndo={!!undoState} undoKind={undoKind} onUndo={undoReset}
+              onShare={() => makeShareLink(state)} linkError={linkError} />
 
             <div className="workspace">
               <div className="inputs-col">

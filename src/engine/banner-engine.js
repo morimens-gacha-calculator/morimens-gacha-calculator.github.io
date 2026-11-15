@@ -43,10 +43,11 @@
 //   streak: { "1,1": [0, 2] },      node path → [last alternative index, run length]
 //   owned:  { "1,1,0": [2, 0, 1],   per-item copies of a pool, in item order
 //             "1,0": 3 } }          or a total; paths must not be nested in each other
-import { DEFAULT_EPS, DEFAULT_MAX_PULLS, DEFAULT_MAX_STATES, PERCENTILE_SLACK } from "./settings.js";
+import { MAX_ENTRY_STATES, DEFAULT_EPS, DEFAULT_MAX_PULLS, DEFAULT_MAX_STATES, PERCENTILE_SLACK } from "./settings.js";
 import { EngineError } from "./errors.js";
 
 import { cached, now } from "./cache.js";
+import { worstCase } from "./worst.js";
 import { MAX_GROUPS, expandSubsets } from "./goal.js";
 import { budgetReport, solveJoint } from "./joint.js";
 import { budgetLayered, planLayered, solveLayered } from "./layered.js";
@@ -54,6 +55,7 @@ import { budgetSplit, planSplit, solveSplit } from "./split.js";
 
 // Also part of the engine's interface (used by tests and tools)
 export { compile } from "./chain.js";
+export { worstCase } from "./worst.js";
 export { expandSubsets } from "./goal.js";
 export { clearCache } from "./cache.js";
 export { setCancelCheck } from "./cancel.js";
@@ -90,11 +92,16 @@ function choosePlan({ tree, goal, goalMode, start, eps, maxStates, method, onPro
   const lp = method === "auto" || method === "layered"
     ? cached("planLayered", [tree, goal, start, goalMode, maxStates, eps, method], () => planLayered(tree, goal, { start, goalMode, maxStates, onPlan }, eps, method === "layered"))
     : null;
-  const small = !!lp?.small, layered = small ? null : lp;
-  if (method === "layered" && !layered) throw new EngineError("layeredDoesntFit", { groups: MAX_GROUPS }, `method "layered" needs every row on one pool or single outcome (up to ${MAX_GROUPS} of them), under an event that restarts the banner`);
-  const split = !layered && !(small && method === "auto") && (method === "auto" || method === "split")
+  const small = !!lp?.small;
+  let layered = small ? null : lp;
+  if (method === "layered" && !layered) throw new EngineError("layeredDoesntFit", { groups: MAX_GROUPS, entries: MAX_ENTRY_STATES }, `method "layered" needs every row on one pool or single outcome (up to ${MAX_GROUPS} of them) under a common event`);
+  // Automatic: when the timing doesn't restart at each event the layered method costs more
+  // (matrices of gaps), so a goal on one pool goes to the split method if it fits
+  const trySplit = method === "split" || (method === "auto" && (layered ? !!layered.mat : !small));
+  const split = trySplit
     ? cached("planSplit", [tree, goal, start, goalMode, maxStates, eps, method], () => planSplit(tree, goal, { start, goalMode, maxStates, onPlan }, eps, method === "split"))
     : null;
+  if (split && method === "auto") layered = null;
   if (method === "split" && !split) throw new EngineError("splitDoesntFit", {}, `method "split" needs all requirements on one pool`);
   const ex = expandSubsets(tree, goal, start);
   return { layered, split, orig, tree: ex.tree, goal: ex.goal, opts: { start: ex.start, goalMode, maxStates, onProgress } };
@@ -144,6 +151,13 @@ export function solve({
   for (const b of chanceAt) chances[b] = b >= cdf.length ? 1 - remaining : cdf[Math.max(0, b)];
   let mode = 0;
   for (let i = 1; i < pmf.length; i++) if (pmf[i] > pmf[mode]) mode = i;
+  // the worst case: the joint chain has it; otherwise a separate small calculation (worst.js)
+  const worst = layered || split
+    ? cached("worst", [tree, goal, start, goalMode, maxStates], () => {
+      try { return { max: worstCase(tree, goal, start, goalMode, maxStates), known: true }; }
+      catch (e) { if (e?.code === "cancelled") throw e; return { max: null, known: false }; }
+    })
+    : { max: res.worst ?? (remaining === 0 ? t : null), known: true };
 
   return {
     requirements: res.labels,
@@ -153,7 +167,8 @@ export function solve({
     mode,                               // single most likely pull to finish on
     percentiles: pct,
     chanceAt: chances,
-    max: res.worst ?? (remaining === 0 ? t : null), // exact worst case, if the goal is guaranteed
+    max: worst.max,                     // exact worst case (pulls), null if the goal can be delayed forever
+    maxKnown: worst.known,              // false: the worst case was too big to work out
     tail: remaining,                    // probability not covered (0 or < eps)
     pmf: Float64Array.from(pmf),        // chart: P(goal first met on pull t)
     cdf,                                // chart: P(goal met within t pulls)

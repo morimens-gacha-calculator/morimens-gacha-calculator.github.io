@@ -60,9 +60,35 @@ for (const [label, goal, start, goalMode] of splitCases) {
   });
 }
 
-test("layered refuses a banner that doesn't restart at each SSR", () => {
-  assert.throws(() => solve({ tree: srTree, goal: [{ path: "0,0", type: "specific", item: 1, copies: 2 }], method: "layered" }));
-});
+// ...and the layered method on such banners: gaps between the states an SSR can leave you in
+const twoPools = [
+  { name: "SSR", p: 0.015, pity: 50, children: { streak: 2, alts: [{ name: "limited", p: 0.5, count: 3, items: ["X", "Y", "Z"] }, { name: "standard", p: "rest", count: 5 }] } },
+  { name: "SR", p: 0.08, pity: 10 },
+  { name: "R", p: "rest" },
+];
+const fourStar = [ // SSR, with SR and R counters that SSRs don't reset (24 states after an SSR)
+  { name: "SSR", p: 0.02, pity: 30, children: [{ name: "pool", p: 1, count: 4 }] },
+  { name: "SR", p: 0.1, pity: 6, children: [{ name: "SR pool", p: 1, count: 3 }] },
+  { name: "R", p: "rest", pity: 4 },
+];
+const markovCases = [
+  ["SR counter: specific ×2", srTree, [{ path: "0,0", type: "specific", item: 1, copies: 2 }], {}, "all"],
+  ["SR counter: 3 different ×2, owned, from pity", srTree, [{ path: "0,0", type: "distinct", k: 3, copies: 2 }], { pity: { "0": 13, "1": 5 }, owned: { "0,0": [1, 0, 0, 2, 0, 0] } }, "all"],
+  ["two pools with memory", twoPools, [{ path: "0,0", type: "distinct", k: 3, copies: 1 }, { path: "0,1", type: "specific", item: 2, copies: 1 }], {}, "all"],
+  ["two pools, any mode, start mid-way", twoPools, [{ path: "0,0", type: "specific", item: "Y", copies: 2 }, { path: "0,1", type: "distinct", k: 4, copies: 1 }], { pity: { "0": 20, "1": 7 }, streak: { "0": [1, 1] } }, "any"],
+  ["two counters running through SSRs", fourStar, [{ path: "0,0", type: "distinct", k: 2, copies: 2 }], { pity: { "2": 3, "1": 2 } }, "all"],
+];
+for (const [label, tree, goal, start, goalMode] of markovCases) {
+  test(`layered = joint, timing that doesn't restart: ${label}`, () => {
+    const q = { tree, goal, start, goalMode, budget: 260 };
+    const J = solve({ ...q, method: "joint" }), L = solve({ ...q, method: "layered" });
+    assert.equal(L.method, "layered");
+    const d = resultDiff(J, L);
+    assert.ok(d < 1e-9, `differs by ${d}`);
+    const a = budgetOnly({ ...q, method: "layered", budget: 90 }), b = budgetOnly({ ...q, method: "joint", budget: 90 });
+    assert.ok(Math.abs(a.chanceGoal - b.chanceGoal) < 1e-11, "pulls mode");
+  });
+}
 
 test("budgetOnly (pulls mode) = budget report of solve", () => {
   const a = budgetOnly({ ...K2, method: "layered", budget: 200 }), b = solve({ ...K2, method: "joint", budget: 200 }).budget;

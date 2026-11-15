@@ -9,18 +9,21 @@
 //            (only reachable cells are stored)
 //   timing — when events happen: the rest of the banner. If it restarts at every event (like
 //            SSR pity), the gaps between events are independent and identically distributed;
-//            the number of pulls is a sum of gaps, combined with an FFT (renewal.js).
+//            the number of pulls is a sum of gaps, combined with an FFT (renewal.js). If an event
+//            can leave it in one of several states (a counter that keeps running through SSRs),
+//            the same with a matrix of gaps between those states (renewal-matrix.js).
 // The joint state space is never built, so goals needing billions of joint states are cheap.
 import { stopIfCancelled } from "./cancel.js";
-import { DEFAULT_MAX_STATES, EVENT_CELLS_PER_STATE, MAX_EVENTS, MAX_EVENT_CELLS, MAX_PULL_SPAN, NEGLIGIBLE, TINY_JOINT_CHAIN, eventTolerance, gapTolerance, poolTolerance } from "./settings.js";
+import { DEFAULT_MAX_STATES, EVENT_CELLS_PER_STATE, MATRIX_TIMING_COST, MAX_ENTRY_STATES, MAX_EVENTS, MAX_EVENT_CELLS, MAX_PULL_SPAN, NEGLIGIBLE, TINY_JOINT_CHAIN, eventTolerance, gapTolerance, poolTolerance } from "./settings.js";
 import { EngineError } from "./errors.js";
 import { cached } from "./cache.js";
-import { compile, firstHitPmf } from "./chain.js";
+import { compile, firstHitPmf, firstHitsByEntry } from "./chain.js";
 import { MAX_GROUPS, goalList, groupRows, ownedFor, rowsOf } from "./goal.js";
 import { addScaled, makeReport } from "./report.js";
 import { chainSizeEstimate, poolBudget, poolNotMet } from "./pool-formulas.js";
 import { poolChain, poolChainBudget, poolChainNotMet, poolPlanFor } from "./pools.js";
 import { curvesByPull, eventsByPull, fft, hornerHalf } from "./renewal.js";
+import { matCurvesByPull, matEventsByPull, matHornerHalf, matLength, matSpectrum } from "./renewal-matrix.js";
 import { canonTree, findAlt, nodeAtCanon, normaliseNode, pathKey, resolvePath } from "./tree.js";
 
 export function planLayered(tree, goal, opts, eps, force) {
@@ -66,7 +69,16 @@ export function planLayered(tree, goal, opts, eps, force) {
       const oc = compile(outerTree, null, { start: outer, maxStates: opts.maxStates, trackHits: [pre] });
       const entries = new Set();
       for (let e = 0; e < oc.col.length; e++) if (oc.lab[e]) entries.add(oc.col[e]);
-      if (entries.size !== 1) return { ok: false }; // timing doesn't restart at each event
+      if (entries.size > MAX_ENTRY_STATES) return { ok: false };
+      if (entries.size > 1) {
+        // the timing doesn't restart at each event: gaps between the states events land in
+        const list = [...entries].sort((a, b) => a - b), J = list.length;
+        const entryOf = new Int32Array(oc.N).fill(-1);
+        list.forEach((x, j) => { entryOf[x] = j; });
+        const Q = list.map((x) => firstHitsByEntry(oc, x, entryOf, J, gapTolerance(eps)));
+        const A = entryOf[oc.startIndex] >= 0 ? Q[entryOf[oc.startIndex]] : firstHitsByEntry(oc, oc.startIndex, entryOf, J, gapTolerance(eps));
+        return { ok: true, states: oc.N - 1, mat: { J, Q, A } };
+      }
       const entry = [...entries][0];
       const gap = firstHitPmf(oc, entry, gapTolerance(eps));
       const gap1 = oc.startIndex === entry ? gap : firstHitPmf(oc, oc.startIndex, gapTolerance(eps));
@@ -84,7 +96,14 @@ export function planLayered(tree, goal, opts, eps, force) {
 
   // Auto: a tiny joint chain is just as fast and also gives the exact worst case
   const jointEst = (timing ? timing.states : 1) * (ic.N - 1) * pools.reduce((m, x) => m * x.est, 1);
-  if (!force && jointEst < TINY_JOINT_CHAIN) return { small: true };
+  // (with several states after an event the layered method does about J times more work per
+  // frequency, so the joint chain wins on bigger goals too)
+  const tiny = TINY_JOINT_CHAIN * (timing?.mat ? MATRIX_TIMING_COST * timing.mat.J : 1);
+  if (!force && jointEst < tiny) return { small: true };
+  // targets under different outcomes (an SSR pool and an SR pool): the "event" is every pull, and
+  // walking it pull by pull tracks hit counts where the joint chain tracks fewer, merged states;
+  // the joint chain is then the better choice whenever it fits
+  if (!force && !pre.length && jointEst <= (opts.maxStates ?? DEFAULT_MAX_STATES)) return { small: true };
 
   const tol = poolTolerance(eps);
   const items = pools.map((x, i) => {
@@ -104,7 +123,7 @@ export function planLayered(tree, goal, opts, eps, force) {
   return {
     eventName,
     maxStates: opts.maxStates, reqs: list, rows, labels, G, items, ic, pre, goalMode: opts.goalMode,
-    gap: timing?.gap ?? null, gap1: timing?.gap1 ?? null, outerStates: timing?.states ?? 0,
+    gap: timing?.gap ?? null, gap1: timing?.gap1 ?? null, mat: timing?.mat ?? null, outerStates: timing?.states ?? 0,
   };
 }
 
@@ -189,7 +208,7 @@ export function undoneAt(cells, i, K, notMet, goalMode) {
 }
 
 export function solveLayered(plan, eps, maxPulls, onProgress) {
-  const { items, gap, gap1, goalMode } = plan;
+  const { items, gap, gap1, mat, goalMode } = plan;
 
   // How many events the goal needs: U[m] = P(M > m)
   const U = [];
@@ -209,7 +228,20 @@ export function solveLayered(plan, eps, maxPulls, onProgress) {
 
   // Number of pulls: each event costs one gap (the first from the starting state)
   let pmfT;
-  if (!gap) pmfT = pM; // the event is the pull itself
+  if (mat) {
+    // several states an event can land in: the same with matrices of gaps
+    const Mmax = pM.length - 1;
+    const { L, len } = matLength(mat, Mmax, 0);
+    if (len > maxPulls + 1 && len > MAX_PULL_SPAN) throw new EngineError("tooManyPulls", { limit: MAX_PULL_SPAN }, "Too big: the result would span too many pulls.");
+    const S = matSpectrum(mat, L);
+    const pMa = Float64Array.from(pM);
+    const [{ outR, outI }] = matHornerHalf([pMa], Mmax, [pMa[0]], S, L, (z) => {
+      stopIfCancelled();
+      if (onProgress) onProgress({ phase: "combine", done: z, total: L / 2 });
+    });
+    fft(outR, outI, true);
+    pmfT = Array.from(outR.subarray(0, len), (v) => (v > 0 ? v : 0));
+  } else if (!gap) pmfT = pM; // the event is the pull itself
   else {
     const Mmax = pM.length - 1;
     const len = (gap1.length - 1) + Math.max(0, Mmax - 1) * (gap.length - 1) + 1;
@@ -249,7 +281,8 @@ export function solveLayered(plan, eps, maxPulls, onProgress) {
 
 export function budgetLayered(plan, B, onProgress = null) {
   if (!(Number.isInteger(B) && B >= 0)) throw new EngineError("badBudget", {}, "budget must be a whole number of pulls ≥ 0");
-  const { items, gap, gap1, goalMode } = plan;
+  const { items, gap, gap1, mat, goalMode } = plan;
+  const timed = !!(gap || mat);
   // progress through the parts, by rough share of the work: events by pull 15%, pool pieces 20%,
   // event walk 15%, curves 50%
   const report = (frac) => onProgress?.({ done: Math.min(1, frac), total: 1 });
@@ -257,8 +290,9 @@ export function budgetLayered(plan, B, onProgress = null) {
 
   // How many events (SSRs) can happen within B pulls: P(m-th event by pull B) for each m
   // (tauB[m]), up to the first m where it's negligible. "mCount or more" counts as mCount.
-  const ev = gap ? eventsByPull(gap1, gap, B, (f) => report(0.15 * f)) : null;
-  const mCount = gap ? ev.mCount : B + 1;
+  const tick = (f) => report(0.15 * f);
+  const ev = mat ? matEventsByPull(mat, B, tick) : gap ? eventsByPull(gap1, gap, B, tick) : null;
+  const mCount = timed ? ev.mCount : B + 1;
   report(0.15);
   // Per pool: progress of each row after n hits, until every row is maxed out
   const perGroup = items.map((x) => (x.formula
@@ -302,11 +336,12 @@ export function budgetLayered(plan, B, onProgress = null) {
   }));
   const done = hitDist.map((h) => h.done);
   // Curves over pulls: goal chance and each row's expected progress
-  const [goalByPull, ...expectedByPull] = gap
-    ? curvesByPull(gap1, gap, B, mCount, [done, ...Em], (f) => report(0.5 + 0.5 * f))
+  const curveTick = (f) => report(0.5 + 0.5 * f);
+  const [goalByPull, ...expectedByPull] = mat ? matCurvesByPull(mat, B, mCount, [done, ...Em], curveTick)
+    : gap ? curvesByPull(gap1, gap, B, mCount, [done, ...Em], curveTick)
     : [done, ...Em].map((f) => Float64Array.from({ length: B + 1 }, (_, t) => f[Math.min(t, f.length - 1)]));
   // P(exactly m events by pull B), for the distributions at B
-  const pAtB = (m) => (gap
+  const pAtB = (m) => (timed
     ? (m === 0 ? 1 : ev.tauB[m]) - (m < mCount ? ev.tauB[m + 1] : 0)
     : (m === Math.min(B, mCount) ? 1 : 0));
   const distAtB = order.map(({ gi, i, r }) => {

@@ -463,6 +463,32 @@ export function advance(cur, next, N, rowStart, col, prob) {
 }
 
 // Distribution of pulls until the first labelled transition, from a given state
+// Like firstHitPmf, split by the state the event lands in: out[j][t] = P(first event at pull t
+// and it lands in entry j), where entryOf[state] = j (−1 for states events never land in).
+export function firstHitsByEntry(c, from, entryOf, J, cut) {
+  const out = Array.from({ length: J }, () => [0]);
+  let cur = new Float64Array(c.N), next = new Float64Array(c.N);
+  cur[from] = 1;
+  let left = 1;
+  const hit = new Float64Array(J);
+  for (let t = 1; left > cut && t < MAX_GAP; t++) {
+    if ((t & 1023) === 0) stopIfCancelled();
+    next.fill(0); hit.fill(0);
+    for (let k = 1; k < c.N; k++) {
+      const m = cur[k];
+      if (!m) continue;
+      for (let e = c.rowStart[k]; e < c.rowStart[k + 1]; e++) {
+        if (c.lab[e]) hit[entryOf[c.col[e]]] += m * c.prob[e]; else next[c.col[e]] += m * c.prob[e];
+      }
+    }
+    for (let j = 0; j < J; j++) out[j].push(hit[j]);
+    left = 0;
+    for (let k = 1; k < c.N; k++) left += next[k];
+    [cur, next] = [next, cur];
+  }
+  return out;
+}
+
 export function firstHitPmf(c, from, cut) {
   const pmf = [0];
   let cur = new Float64Array(c.N), next = new Float64Array(c.N);

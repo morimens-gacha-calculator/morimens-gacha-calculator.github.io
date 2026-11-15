@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Chart as ChartJS, LinearScale, PointElement, LineElement, Filler, Tooltip, Legend } from "chart.js";
 import { Line } from "react-chartjs-2";
-import { fmtInt, fmtNum, fmtPct, listOfInts, DEFAULT_LINES, getPrecision } from "../model.js";
+import { fmtInt, fmtNum, fmtPct, listOfInts, DEFAULT_LINES, getPrecision, presets, reqLabel } from "../model.js";
 import { useT } from "../i18n/index.js";
 import NumberInput from "./NumberInput.jsx";
 import Progress from "./Progress.jsx";
+import { budgetRows, chanceByPullRows, downloadChartPng, downloadCsv, fileName } from "../export.js";
 
 ChartJS.register(LinearScale, PointElement, LineElement, Filler, Tooltip, Legend);
 
@@ -68,6 +69,7 @@ export default function ResultChart({ state, update, engine, theme }) {
   const T = useT();
   const L = T.chart;
   const [view, setView] = useState("cdf");
+  const chartRef = useRef(null);
   const r = engine.result;
   const b = r?.budget;
   const lines = { ...DEFAULT_LINES, ...state.chartLines };
@@ -146,11 +148,15 @@ export default function ResultChart({ state, update, engine, theme }) {
             <button key={v} type="button" role="tab" aria-selected={active === v} className={`chip-tab ${active === v ? "is-active" : ""}`} onClick={() => setView(v)}>{label}</button>
           ))}
         </div>
-        <LinesMenu lines={lines} setLines={setLines} pctOptions={pctOptions} hasWorst={r?.max != null} mode={state.mode} />
+        <div className="row toolbar-menus">
+          <LinesMenu lines={lines} setLines={setLines} pctOptions={pctOptions} hasWorst={r?.max != null} worstUnknown={r?.maxKnown === false} mode={state.mode} />
+          <ExportMenu result={engine.status === "busy" ? null : r} chartRef={chartRef} state={state} viewName={views.find(([v]) => v === active)?.[1]} />
+        </div>
       </div>
       <div className="chart-container">
         {chart && (
           <Line
+            ref={chartRef}
             data={chart.data}
             options={{
               responsive: true, maintainAspectRatio: false, animation: false, parsing: false, normalized: true,
@@ -173,11 +179,9 @@ export default function ResultChart({ state, update, engine, theme }) {
   );
 }
 
-// "Lines ▾" menu: tick which reference lines to draw, and add lines at any pull
-function LinesMenu({ lines, setLines, pctOptions, hasWorst, mode }) {
-  const L = useT().chart;
+// A small pop-up menu that closes on outside clicks and Escape
+function usePopup() {
   const [open, setOpen] = useState(false);
-  const [newLine, setNewLine] = useState(100);
   const ref = useRef(null);
   useEffect(() => {
     if (!open) return undefined;
@@ -187,6 +191,45 @@ function LinesMenu({ lines, setLines, pctOptions, hasWorst, mode }) {
     document.addEventListener("keydown", esc);
     return () => { document.removeEventListener("pointerdown", close); document.removeEventListener("keydown", esc); };
   }, [open]);
+  return { open, setOpen, ref };
+}
+
+// "Export ▾": the numbers as CSV (for spreadsheets) and the chart as a PNG image
+function ExportMenu({ result, chartRef, state, viewName }) {
+  const L = useT().chart;
+  const { open, setOpen, ref } = usePopup();
+
+  const run = (fn) => { setOpen(false); fn(); };
+  const T = useT();
+  const title = presets()[state.preset]?.title ?? T.app.customBanner;
+  const image = () => {
+    const cs = getComputedStyle(document.documentElement);
+    const v = (n, d) => cs.getPropertyValue(n).trim() || d;
+    const goals = state.goal.map((g) => reqLabel(state.banner, g)).join(state.goalMode === "all" ? T.goalLabel.joinAll : T.goalLabel.joinAny);
+    return { background: v("--pop-bg", "#ffffff"), ink: v("--ink", "#000000"), muted: v("--ink-2", "#555555"), title: `${title} · ${viewName}`, subtitle: goals };
+  };
+  return (
+    <div className="lines-menu" ref={ref}>
+      <button type="button" className="chip-tab" aria-expanded={open} disabled={!result} onClick={() => setOpen((o) => !o)}>{L.export} ▾</button>
+      {open && result && (
+        <div className="lines-pop" role="menu" aria-label={L.export}>
+          <button type="button" role="menuitem" className="menu-item" onClick={() => run(() => downloadCsv(fileName(title, L.fileByPull) + ".csv", chanceByPullRows(result, L)))}>{L.exportByPull}</button>
+          {result.budget && (
+            <button type="button" role="menuitem" className="menu-item" onClick={() => run(() => downloadCsv(fileName(title, L.fileBudget(result.budget.pulls)) + ".csv", budgetRows(result.budget, L)))}>{L.exportBudget(result.budget.pulls)}</button>
+          )}
+          <button type="button" role="menuitem" className="menu-item" disabled={!chartRef.current}
+            onClick={() => run(() => chartRef.current && downloadChartPng(chartRef.current, fileName(title, viewName) + ".png", image()))}>{L.exportImage}</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// "Lines ▾" menu: tick which reference lines to draw, and add lines at any pull
+function LinesMenu({ lines, setLines, pctOptions, hasWorst, worstUnknown, mode }) {
+  const L = useT().chart;
+  const { open, setOpen, ref } = usePopup();
+  const [newLine, setNewLine] = useState(100);
   const togglePct = (p) => setLines({ pcts: lines.pcts.includes(p) ? lines.pcts.filter((x) => x !== p) : [...lines.pcts, p].sort((a, b) => a - b) });
   const addCustom = () => { if (newLine > 0 && !lines.custom.includes(newLine)) setLines({ custom: [...lines.custom, newLine].sort((a, b) => a - b) }); };
 
@@ -201,7 +244,7 @@ function LinesMenu({ lines, setLines, pctOptions, hasWorst, mode }) {
           {pctOptions.map((p) => (
             <label className="check" key={p}><input type="checkbox" checked={lines.pcts.includes(p)} onChange={() => togglePct(p)} />{p === 50 ? L.lineMedian : L.linePct(p)}</label>
           ))}
-          <label className="check" title={hasWorst ? undefined : L.noWorst}>
+          <label className="check" title={hasWorst ? undefined : worstUnknown ? L.worstUnknown : L.noWorst}>
             <input type="checkbox" checked={lines.worst} disabled={!hasWorst} onChange={(e) => setLines({ worst: e.target.checked })} />
             <span className={hasWorst ? "" : "muted"}>{L.lineWorst}</span>
           </label>

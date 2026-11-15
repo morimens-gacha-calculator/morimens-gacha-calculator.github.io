@@ -293,10 +293,9 @@ function mergeTotals(totals, n) {
   return list.filter((t) => t.lo > 0 || t.hi < Infinity || t.set.length === n);
 }
 
-// ── Public: per-pool plan ────────────────────────────────────────────────────
-// rows: [{ type: "specific"|"total"|"distinct", item, items: number[]|null, copies, k, have }]
-// owned: per-item copies (array, may be shorter than n)
-export function poolPlan(n, rows, owned = [], goalMode = "all") {
+// The rows of one pool in a common form: per-item owned copies, and each row as
+// { type: "total", set, copies, base } | { type: "specific", item, copies } | { type: "distinct", set, copies, k }
+export function poolRows(n, rows, owned = []) {
   const own = Array.from({ length: n }, (_, i) => Math.max(0, owned[i] | 0));
   const norm = rows.map((r) => {
     const type = r.type ?? "total";
@@ -309,6 +308,14 @@ export function poolPlan(n, rows, owned = [], goalMode = "all") {
     const base = (r.have | 0) + set.reduce((s, i) => s + own[i], 0);
     return { type: "total", set, copies: r.copies, base, max: r.copies };
   });
+  return { own, norm };
+}
+
+// ── Public: per-pool plan ────────────────────────────────────────────────────
+// rows: [{ type: "specific"|"total"|"distinct", item, items: number[]|null, copies, k, have }]
+// owned: per-item copies (array, may be shorter than n)
+export function poolPlan(n, rows, owned = [], goalMode = "all") {
+  const { own, norm } = poolRows(n, rows, owned);
   const plan = { n, own, rows: norm, goalMode };
   // check total subsets nest (else the chain has to do it)
   if (mergeTotals(norm.filter((r) => r.type === "total").map((r) => ({ set: r.set, lo: 1, hi: Infinity })), n) === null) return null;
