@@ -246,10 +246,22 @@ export function remapKeys(state, fn) {
 
 export const listOfInts = (s) => String(s ?? "").split(/[\s,;]+/).filter((x) => x !== "").map(Number).filter((x) => Number.isFinite(x) && x >= 0).map(Math.floor);
 
+// The chosen items of a row (indices), or null when the whole pool counts
+export function rowSubset(tree, r) {
+  if (!Array.isArray(r.items) || r.type === "specific") return null;
+  const t = allAlts(tree).find((a) => a.key === r.path);
+  if (!t?.isPool) return null;
+  const n = Math.floor(num(t.alt.count, 1));
+  const items = r.items.filter((i) => i < n);
+  return items.length === n ? null : items;
+}
+
 export function reqLabel(tree, r) {
   const L = getStrings().goalLabel;
   const t = allAlts(tree).find((a) => a.key === r.path);
-  const n = t ? t.name : r.path;
+  const sub = rowSubset(tree, r);
+  const n = !t ? r.path : sub?.length ? L.subset(sub.map((i) => itemNames(t.alt)[i]), t.name) : t.name;
+  if (sub?.length && r.type === "distinct") return L.distinctFrom(r.k, n, r.copies);
   if (r.type === "total") return L.total(n, r.copies);
   if (r.type === "specific") return L.specific(t ? itemNames(t.alt)[r.item ?? 0] ?? n : n, r.copies);
   return L.distinct(r.k, n, r.copies);
@@ -271,7 +283,17 @@ export function buildQuery(state) {
   }
   const q = {
     tree,
-    goal: goal.map((r) => ({ path: r.path, type: r.type, item: r.item ?? 0, k: r.k, copies: r.copies, label: reqLabel(banner, r) })),
+    goal: goal.map((r) => {
+      const sub = rowSubset(banner, r);
+      const g = { path: r.path, type: r.type, item: r.item ?? 0, k: r.k, copies: r.copies, label: reqLabel(banner, r) };
+      if (sub) {
+        if (!sub.length) throw new Error(E.noItems(g.label));
+        if (r.type === "distinct" && r.k > sub.length) throw new Error(E.tooFewItems(sub.length, r.k));
+        g.items = sub;
+        if (r.type === "total") g.have = Math.max(0, Math.floor(num(r.from))); // copies already owned among the chosen items
+      }
+      return g;
+    }),
     goalMode,
     start: { pity: {}, streak: {}, owned: {} },
   };
@@ -281,7 +303,8 @@ export function buildQuery(state) {
 
   // What you already own: one value per target, merged per outcome
   const byPath = {};
-  for (const r of goal) (byPath[r.path] ??= []).push(r);
+  // ("total" rows over chosen items carry their own "have", so they're left out here)
+  for (const r of goal) if (!(r.type === "total" && rowSubset(banner, r))) (byPath[r.path] ??= []).push(r);
   for (const [path, rows] of Object.entries(byPath)) {
     const a = alts.find((x) => x.key === path);
     const perItem = a.isPool && rows.some((r) => r.type !== "total");

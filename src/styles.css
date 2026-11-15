@@ -486,3 +486,16 @@ input[type="number"]::-webkit-outer-spin-button, input[type="number"]::-webkit-i
 .switch:checked::after { transform: translateX(18px); background: var(--primary-ink); }
 @media (prefers-reduced-motion: reduce) { .switch, .switch::after { transition: none; } }
 .custom-input:disabled { opacity: 0.55; cursor: not-allowed; }
+
+/* ── Item picker ("From") in pull plan rows ── */
+.item-picker { position: relative; min-width: 0; }
+.picker-btn { text-align: left; cursor: pointer; min-width: 120px; max-width: 220px; display: flex; align-items: center; height: 38px; }
+.picker-btn::after { content: "▾"; margin-left: auto; padding-left: 8px; color: var(--muted); }
+.picker-btn-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.item-pop { left: 0; right: auto; width: 280px; }
+.item-pop-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.item-list { display: grid; gap: 4px; max-height: 300px; overflow: auto; padding-right: 4px; }
+@media (max-width: 640px) {
+  .picker-btn { max-width: none; width: 100%; }
+  .item-pop { left: 12px; right: 12px; width: auto; }
+}

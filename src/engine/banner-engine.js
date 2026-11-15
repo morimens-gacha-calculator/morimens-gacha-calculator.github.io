@@ -153,9 +153,12 @@ function parseGoal(root, goalRaw) {
     : Object.entries(goalRaw ?? {}).map(([path, copies]) => ({ path, copies }));
   if (list.length === 0) throw new Error("Goal is empty");
   return list.map((g) => {
-    const path = resolvePath(root, g.path);
-    const shown = g.path === undefined || g.path === "" ? "everything" : String(g.path);
-    if (path.length && !findAlt(root, path)) throw new Error(`Goal path "${shown}" not in tree`);
+    // `paths` (several outcomes counted together) comes from expandSubsets; `path` is one outcome
+    const paths = Array.isArray(g.paths) ? g.paths.map((x) => resolvePath(root, x)) : [resolvePath(root, g.path)];
+    const path = paths[0];
+    const shown = g.label ?? (g.path === undefined || g.path === "" ? "everything" : String(g.path ?? g.paths));
+    for (const p of paths) if (p.length && !findAlt(root, p)) throw new Error(`Goal path "${shown}" not in tree`);
+    const have = Math.max(0, Math.floor(Number(g.have) || 0));
     const copies = g.copies ?? 1;
     if (!isPosInt(copies)) throw new Error(`copies for "${shown}" must be a positive integer`);
     let type = g.type ?? "total";
@@ -179,14 +182,14 @@ function parseGoal(root, goalRaw) {
     if (type === "distinct") {
       const k = g.k;
       if (!isPosInt(k)) throw new Error(`k for "${shown}" must be a positive integer`);
-      const groups = leavesUnder(root, path);
+      const groups = [...new Set(paths.flatMap((p) => leavesUnder(root, p)))];
       const items = groups.reduce((s, a) => s + a.count, 0);
       if (k > items) throw new Error(`"${shown}" has only ${items} items, can't get ${k} different`);
-      return { type, path, copies, k, groups, items,
+      return { type, path, paths, copies, k, groups, items,
                label: g.label ?? `${k} different of ${shown}, ×${copies} each` };
     }
     if (type !== "total") throw new Error(`Unknown goal type "${type}"`);
-    return { type, path, copies, label: g.label ?? `${shown} ×${copies}` };
+    return { type, path, paths, copies, have, label: g.label ?? `${shown} ×${copies}` };
   });
 }
 
@@ -245,7 +248,7 @@ export function compile(treeRaw, goalRaw, { start: startRaw = {}, goalMode = "al
   for (const r of reqs) {
     if (r.type !== "total") continue;
     r.v = newVar();
-    for (const a of leavesUnder(root, r.path)) a.sumReqs.push(r);
+    for (const a of new Set(r.paths.flatMap((p) => leavesUnder(root, p)))) a.sumReqs.push(r);
   }
 
   const atLeast = (g, c, s) => {
@@ -310,8 +313,10 @@ export function compile(treeRaw, goalRaw, { start: startRaw = {}, goalMode = "al
       }
     }
     for (const r of reqs)
-      if (r.type === "total" && isPrefix(r.path, path)) start[r.v] = Math.min(start[r.v] + total, r.copies);
+      if (r.type === "total" && r.paths.some((p) => isPrefix(p, path))) start[r.v] = Math.min(start[r.v] + total, r.copies);
   }
+  // Copies already owned that a requirement states itself (used for item subsets)
+  for (const r of reqs) if (r.type === "total" && r.have) start[r.v] = Math.min(start[r.v] + r.have, r.copies);
 
   // Probabilities at a node given the (already incremented) counters in s
   function probsAt(node, s) {
@@ -553,6 +558,118 @@ function advance(cur, next, N, rowStart, col, prob) {
 
 const now = () => (typeof performance !== "undefined" ? performance.now() : Date.now());
 
+// ── Item subsets ──────────────────────────────────────────────────────────────
+// A "total" or "distinct" requirement can name some items of a pool:
+//   { path: "0,0", type: "total", items: ["Lily", "Tawil", "Sorel"], copies: 5 }
+// Items of a pool have equal odds, so the pool can be split into smaller pools with
+// proportional chances without changing anything: each group of items that every
+// requirement treats alike becomes its own sub-pool. Requirements are then rewritten to
+// point at the sub-pools. Pity, memory rules, specific items and owned copies carry over.
+function canonTree(raw) {
+  const isObj = raw && !Array.isArray(raw);
+  const altsRaw = isObj ? raw.alts : raw;
+  return {
+    streak: isObj ? raw.streak || 0 : 0,
+    alts: altsRaw.map((a) => {
+      const o = Array.isArray(a) ? { p: a[0], pity: a[1], children: a[2] } : { ...a };
+      if (typeof o.children === "number") { o.count = o.children; o.children = null; }
+      if (o.children) o.children = canonTree(o.children);
+      return o;
+    }),
+  };
+}
+
+export function expandSubsets(tree, goal, start = {}) {
+  const list = Array.isArray(goal) ? goal : Object.entries(goal ?? {}).map(([path, copies]) => ({ path, copies }));
+  if (!list.some((g) => Array.isArray(g.items))) return { tree, goal, start };
+
+  const t = canonTree(tree);
+  const root = normaliseNode(t, []); // only to resolve names and validate
+  const altAtPath = (path) => { let n = t, a = null; for (const i of path) { a = n.alts[i]; n = a?.children; } return a; };
+  const goalOut = list.map((g) => ({ ...g }));
+  const owned = { ...(start.owned ?? {}) };
+
+  // Group subset requirements by pool
+  const byPool = new Map();
+  for (const g of goalOut) {
+    if (!Array.isArray(g.items)) continue;
+    const type = g.type ?? "total";
+    if (type !== "total" && type !== "distinct") throw new Error(`Only "total" and "distinct" requirements can pick items`);
+    const path = resolvePath(root, g.path);
+    const alt = findAlt(root, path);
+    if (!alt || alt.child || alt.count < 2) throw new Error(`Picking items needs a pool (count > 1), not "${g.path}"`);
+    const idx = g.items.map((it) => {
+      if (typeof it === "number" || /^\d+$/.test(String(it))) return Number(it);
+      const j = (alt.itemNames ?? []).indexOf(it);
+      if (j < 0) throw new Error(`Pool "${g.path}" has no item named "${it}"`);
+      return j;
+    });
+    if (!idx.length) throw new Error(`Pick at least one item for "${g.label ?? g.path}"`);
+    for (const i of idx) if (!Number.isInteger(i) || i < 0 || i >= alt.count) throw new Error(`Pool "${g.path}" has items 0–${alt.count - 1}, not ${i}`);
+    g._set = new Set(idx);
+    g._pool = pathKey(path);
+    if (!byPool.has(g._pool)) byPool.set(g._pool, { path, alt, reqs: [] });
+    byPool.get(g._pool).reqs.push(g);
+  }
+
+  for (const [key, { path, alt, reqs }] of byPool) {
+    const n = alt.count;
+    // Items every subset requirement treats alike end up in the same sub-pool
+    const classes = new Map();
+    for (let i = 0; i < n; i++) {
+      const sig = reqs.map((r) => (r._set.has(i) ? 1 : 0)).join("");
+      if (!classes.has(sig)) classes.set(sig, []);
+      classes.get(sig).push(i);
+    }
+    const groups = [...classes.values()];
+    const where = new Map(); // pool item index → [sub-pool index, index inside it]
+    groups.forEach((g, ci) => g.forEach((i, li) => where.set(i, [ci, li])));
+    const subPath = (ci) => [...path, ci].join(",");
+    const names = alt.itemNames ?? [];
+
+    if (groups.length > 1) {
+      const raw = altAtPath(path);
+      raw.children = {
+        streak: 0,
+        alts: groups.map((g, ci) => ({
+          name: `${alt.name ?? "pool"} · ${ci + 1}`,
+          p: `${g.length}/${n}`,
+          count: g.length,
+          items: g.map((i) => names[i] ?? `item ${i + 1}`),
+        })),
+      };
+      delete raw.count;
+      delete raw.items;
+    }
+
+    for (const r of reqs) {
+      // all sub-pools fully inside the subset (each sub-pool is either fully in or fully out)
+      r.paths = groups.length > 1 ? groups.map((g, ci) => (r._set.has(g[0]) ? subPath(ci) : null)).filter(Boolean) : [key];
+      delete r.path; delete r.items; delete r._set; delete r._pool;
+    }
+    if (groups.length > 1) {
+      // "one specific item" rows on this pool now point inside a sub-pool
+      for (const g of goalOut) {
+        if ((g.type ?? "total") !== "specific" || g.paths) continue;
+        if (pathKey(resolvePath(root, g.path)) !== key) continue;
+        let item = g.item ?? 0;
+        if (typeof item === "string" && !/^\d+$/.test(item)) item = names.indexOf(item);
+        const [ci, li] = where.get(Number(item)) ?? [0, 0];
+        g.path = subPath(ci);
+        g.item = li;
+      }
+      // owned copies listed per item are split between the sub-pools
+      for (const [k, v] of Object.entries(owned)) {
+        if (!Array.isArray(v) || pathKey(resolvePath(root, k)) !== key) continue;
+        delete owned[k];
+        groups.forEach((g, ci) => { owned[subPath(ci)] = g.map((i) => Math.max(0, v[i] | 0)); });
+      }
+    }
+  }
+  for (const g of goalOut) { delete g._set; delete g._pool; }
+  return { tree: t, goal: goalOut, start: { ...start, owned } };
+}
+
 // ── Solve ─────────────────────────────────────────────────────────────────────
 export function solve({
   tree,
@@ -569,6 +686,7 @@ export function solve({
   onProgress = null,  // optional callback: { phase: "build" | "calc" | "budget", ... }
 }) {
   const t0 = now();
+  ({ tree, goal, start } = expandSubsets(tree, goal, start));
   const opts = { start, goalMode, maxStates, onProgress };
   const split = method === "joint" ? null : planSplit(tree, goal, opts, eps, method === "split");
   if (method === "split" && !split) throw new Error(`method "split" needs all requirements on one pool`);
@@ -839,6 +957,7 @@ function budgetReport(tree, goal, opts, B) {
 
 // Budget report only ("what will I get with B pulls"), without the pulls-to-goal part.
 export function budgetOnly({ tree, goal, goalMode = "all", start = {}, budget, eps = 1e-13, maxStates = 1e6, method = "auto", onProgress = null }) {
+  ({ tree, goal, start } = expandSubsets(tree, goal, start));
   const opts = { start, goalMode, maxStates, onProgress };
   const split = method === "joint" ? null : planSplit(tree, goal, opts, eps, method === "split");
   return split ? budgetSplit(tree, split, opts, budget) : budgetReport(tree, goal, opts, budget);

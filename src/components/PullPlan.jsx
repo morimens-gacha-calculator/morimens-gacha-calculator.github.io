@@ -2,6 +2,7 @@ import { HelpButton } from "./Help.jsx";
 import { useT } from "../i18n/index.js";
 import NumberInput from "./NumberInput.jsx";
 import Progress from "./Progress.jsx";
+import ItemPicker from "./ItemPicker.jsx";
 import { allAlts, itemNames, newId, num } from "../model.js";
 
 // The pull plan: one row per thing you want
@@ -45,7 +46,7 @@ export default function PullPlan({ state, update, onCalculate, onAddCompare, not
             <div className="plan-row" key={r.id}>
               <label className="field grow">
                 <span className="field-label">{L.outcome}</span>
-                <select className="select" value={r.path} onChange={(e) => setRow(r.id, { path: e.target.value })}>
+                <select className="select" value={r.path} onChange={(e) => setRow(r.id, { path: e.target.value, items: null })}>
                   {alts.map((x) => (
                     <option key={x.key} value={x.key}>{"  ".repeat(x.depth)}{x.name}{x.isPool ? ` (${x.alt.count})` : ""}</option>
                   ))}
@@ -57,6 +58,12 @@ export default function PullPlan({ state, update, onCalculate, onAddCompare, not
                   {Object.entries(TYPES).filter(([t]) => t !== "specific" || isPool).map(([t, txt]) => <option key={t} value={t}>{txt}</option>)}
                 </select>
               </label>
+              {isPool && r.type !== "specific" && (
+                <div className="field">
+                  <span className="field-label">{L.from}</span>
+                  <ItemPicker names={names} value={r.items ?? null} onChange={(v) => setRow(r.id, { items: v })} />
+                </div>
+              )}
               {r.type === "specific" && (
                 <label className="field">
                   <span className="field-label">{L.item}</span>
@@ -117,5 +124,8 @@ function fix(r, alts) {
   const a = alts.find((x) => x.key === r.path);
   if (r.type === "specific" && !a?.isPool) r.type = "total";
   if (r.type === "specific" && a && (r.item ?? 0) >= num(a.alt.count, 1)) r.item = 0;
+  // A chosen subset only applies to pools; drop items that no longer exist
+  if (!a?.isPool || r.type === "specific") r.items = null;
+  else if (Array.isArray(r.items)) r.items = r.items.filter((i) => i < num(a.alt.count, 1));
   return r;
 }
