@@ -72,3 +72,48 @@ export function downloadChartPng(chart, name, { background, ink, muted, title, s
   ctx.drawImage(src, pad, pad + head);
   out.toBlob((blob) => blob && download(name, blob), "image/png");
 }
+
+// The preview card for a short link: 1200×630, the setup and its result on top, the chart on
+// the page below them, in the current theme. A JPEG data URL (small enough to store).
+export function shareCard({ title, detail }, chartCanvas) {
+  const W = 1200, H = 630, pad = 56;
+  const out = document.createElement("canvas");
+  out.width = W; out.height = H;
+  const ctx = out.getContext("2d");
+  const cs = getComputedStyle(document.documentElement);
+  const v = (n, d) => cs.getPropertyValue(n).trim() || d;
+  ctx.fillStyle = v("--pop-bg", "#15172a");
+  ctx.fillRect(0, 0, W, H);
+  const font = (w, px) => `${w} ${px}px Roboto, system-ui, sans-serif`;
+  // title: up to two lines, cut with "…"
+  ctx.textBaseline = "top";
+  ctx.fillStyle = v("--ink", "#eceef6");
+  ctx.font = font(700, 44);
+  const words = title.split(" "), lines = [""];
+  for (const w of words) {
+    const tryLine = lines[lines.length - 1] ? `${lines[lines.length - 1]} ${w}` : w;
+    if (ctx.measureText(tryLine).width <= W - 2 * pad || !lines[lines.length - 1]) lines[lines.length - 1] = tryLine;
+    else if (lines.length < 2) lines.push(w);
+    else { lines[1] = `${lines[1]}…`; break; }
+  }
+  lines.forEach((l, i) => ctx.fillText(l, pad, pad + i * 54, W - 2 * pad));
+  let y = pad + lines.length * 54 + 10;
+  if (detail) {
+    ctx.fillStyle = v("--accent", "#a99cff");
+    ctx.font = font(600, 30);
+    ctx.fillText(detail, pad, y, W - 2 * pad);
+    y += 48;
+  }
+  // the chart below, kept in proportion
+  const footer = 40;
+  if (chartCanvas && chartCanvas.width && chartCanvas.height) {
+    const boxW = W - 2 * pad, boxH = H - y - pad / 2 - footer;
+    const k = Math.min(boxW / chartCanvas.width, boxH / chartCanvas.height);
+    const w = chartCanvas.width * k, h = chartCanvas.height * k;
+    ctx.drawImage(chartCanvas, pad + (boxW - w) / 2, y + 8, w, h);
+  }
+  ctx.fillStyle = v("--ink-2", "#9aa0b8");
+  ctx.font = font(500, 22);
+  ctx.fillText("Morimens Gacha Calculator", pad, H - pad / 2 - 22);
+  return out.toDataURL("image/jpeg", 0.85);
+}

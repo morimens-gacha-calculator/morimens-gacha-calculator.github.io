@@ -136,16 +136,45 @@ export async function decodeSetup(code) {
 
 // One line saying what the link shows, for the message it's pasted into (chat previews can't
 // read the setup: it sits after "#", which never reaches a server)
-export function shareSummary(state, result, T) {
-  const title = presets()[state.preset]?.title ?? T.app.customBanner;
+// The two halves: what's set up ("Kaleido banner (Arc 2) · Arachne ×17") and what it gives
+// ("<0.01% with 25 pulls (average 13,600.08)"), for the copied text and the preview card
+export function shareParts(state, result, T) {
+  const banner = presets()[state.preset]?.title ?? T.app.customBanner;
   const goals = state.goal.map((g) => reqLabel(state.banner, g)).join(state.goalMode === "all" ? T.goalLabel.joinAll : T.goalLabel.joinAny);
-  let line = `${title} · ${goals}`;
+  let detail = "";
   if (result) {
-    if (state.mode === "budget" && result.budget) line += T.app.shareBudget(fmtPct(result.budget.chanceGoal), fmtInt(state.budget), fmtNum(result.mean));
-    else if (result.requiredPulls != null) line += T.app.sharePulls(state.desired, fmtInt(result.requiredPulls), fmtNum(result.mean));
-    else line += T.app.shareAverage(fmtNum(result.mean));
+    if (state.mode === "budget" && result.budget) detail = T.app.shareBudget(fmtPct(result.budget.chanceGoal), fmtInt(state.budget), fmtNum(result.mean));
+    else if (result.requiredPulls != null) detail = T.app.sharePulls(state.desired, fmtInt(result.requiredPulls), fmtNum(result.mean));
+    else detail = T.app.shareAverage(fmtNum(result.mean));
   }
-  return line;
+  return { title: `${banner} · ${goals}`, detail: detail.replace(/^ - /, "") };
+}
+export function shareSummary(state, result, T) {
+  const { title, detail } = shareParts(state, result, T);
+  return detail ? `${title} - ${detail}` : title;
+}
+
+// A short link (/s/k7Fq2aB) from the site's own server functions (functions/api/share.js), with
+// the preview card's text and image; null where there are none (a local build, GitHub Pages, no
+// storage set up) or they don't answer in 5 seconds: then the long "#s=" link is used
+export async function makeShortLink(state, parts, image) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 5000);
+  try {
+    const res = await fetch(new URL("api/share", window.location.origin + "/"), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ code: await encodeSetup(state), title: parts.title, detail: parts.detail, image }),
+      signal: ctrl.signal,
+    });
+    if (!res.ok) return null;
+    const { id } = await res.json();
+    return typeof id === "string" ? new URL(`s/${id}`, window.location.origin + "/").href : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 export const linkCode = (hash) => (hash.startsWith("#s=") ? hash.slice(3) : null);

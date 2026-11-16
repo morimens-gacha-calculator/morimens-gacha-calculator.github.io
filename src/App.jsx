@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { freshState, newId, presets, reqLabel, withPresetNames, setPrecision, DEFAULT_SETTINGS } from "./model.js";
 import { useEngine } from "./useEngine.js";
-import { decodeSetup, linkCode, makeShareLink, shareSummary } from "./share.js";
+import { decodeSetup, linkCode, makeShareLink, makeShortLink, shareParts, shareSummary } from "./share.js";
+import { shareCard } from "./export.js";
 import { useCompare } from "./useCompare.js";
 import { I18nContext, LOCALES, browserLocale, setLocale } from "./i18n/index.js";
 import { BACKGROUND, DEFAULT_THEME, DEFAULT_PRESET, SITE_NAME, BANNERS_PATCH, SOURCE_URL } from "./site.config.js";
@@ -198,7 +199,16 @@ export default function App() {
 
             <BannerPicker current={state.preset} hint={P[state.preset]?.hint ?? T.app.customHint} onPick={pickBanner}
               onReset={resetBanner} canUndo={!!undoState} undoKind={undoKind} onUndo={undoReset} onDismissUndo={() => setUndoState(null)}
-              onShare={async () => ({ url: await makeShareLink(state), summary: shareSummary(state, engine.status === "busy" ? null : engine.result, T) })}
+              onShare={async () => {
+                // a short link with its own preview card where the site's server functions are
+                // there (Cloudflare), else the long "#s=" link
+                const result = engine.status === "busy" ? null : engine.result;
+                const parts = shareParts(state, result, T);
+                let image = null;
+                try { image = shareCard(parts, document.querySelector(".chart-container canvas")); } catch { /* text-only card */ }
+                const url = (await makeShortLink(state, parts, image)) ?? (await makeShareLink(state));
+                return { url, summary: shareSummary(state, result, T) };
+              }}
               linkError={linkError} onDismissError={() => setLinkError(false)} />
 
             <div className="workspace">
