@@ -8,11 +8,17 @@ const place = (where) => (where ? `"${where}"` : "The banner's top level");
 
 const plural = (n, one, many) => (n === 1 ? one : many);
 
+// "character" → "characters" (names that already end in s stay as they are)
+const plurals = (name) => (/s$/i.test(name) ? name : `${name}s`);
+
 export default {
   langName: "English",
   numberLocale: "en-US",         // used to format numbers: 1,234.5
 
   app: {
+    viewLabel: "View",
+    viewSimple: "Simple",
+    viewFull: "Full view",
     title: "Morimens Gacha Calculator",
     customHint: "Your own banner. Change its rules in the Banner rules tab; it is remembered separately from the presets.",
     lightTheme: "Light theme",
@@ -164,6 +170,11 @@ export default {
   },
 
   settings: {
+    wording: "Wording",
+    wordingHint: "Everyday words (\"half of players are done by\") or the exact terms (\"median\"). By default the simple view uses everyday words and the full view the exact terms.",
+    wordingAuto: "Follow the view",
+    wordingSimple: "Simple",
+    wordingTechnical: "Technical",
     globalNote: "These settings are shared by every banner and comparison: switching banners, Reset and shared links don't change them.",
     showBest: "Show earliest possible pull",
     showBestHint: "The fewest pulls the goal could ever take, if everything goes your way.",
@@ -241,6 +252,64 @@ export default {
     never: "Never guaranteed",
   },
 
+  simple: {
+    planLabel: "Your plan",
+    answerLabel: "Answer",
+    tryOne: "Try one of these, or ask your own:",
+    ownQuestion: "Ask my own question",
+    iWant: "I want",
+    joinLabel: "How the goals combine",
+    and: "and",
+    or: "or",
+    whatLabel: (i) => `Goal ${i}`,
+    anyOf: (name) => `any ${name}`,
+    differentOf: (name) => `different ${plurals(name)}…`,
+    everyOf: (name, n) => `every ${name} (all ${n})`,
+    otherGroup: "Other",
+    customGoal: "set in the full view",
+    howManyDifferent: "How many different",
+    different: "different",
+    copiesLabel: "Copies",
+    each: "each",
+    removeGoal: "Remove this goal",
+    addGoal: "Add another goal",
+    alreadyHave: "I already have",
+    iHave: "I have",
+    pulls: "pulls",
+    optional: "optional: leave empty to see how many you need",
+    sinceLast: (name) => `Pulls since my last ${name}`,
+    lastWas: (name) => `My last ${name} was`,
+    inARow: (name, r) => `${name}, ${r} in a row`,
+    dontKnow: "I don't know / none yet",
+    pityHint: "Not sure? Leave 0.",
+    moreOptions: "More options",
+    lessOptions: "Fewer options",
+    moreHint: "Copies you already own can now be set above. Banner rules, comparisons and every detail are in the full view.",
+    contextBudget: (goals, pulls) => `${goals}, with ${pulls} pulls`,
+    contextPulls: (goals) => `${goals}: how many pulls you need`,
+    youHave: (pct) => `You have a ${pct} chance`,
+    averageBig: (n) => `On average it takes ${n} pulls`,
+    average: (n) => `On average it takes ${n} pulls.`,
+    halfAndNine: (a, b) => `Half of players are done by ${a}; 9 in 10 by ${b}.`,
+    toBeSure: "To be",
+    sureLabel: "How sure, in percent",
+    sureResult: (n) => `% sure, you need ${n} pulls.`,
+    earliest: (n) => `Earliest possible: pull ${n}.`,
+    guaranteedBy: (n) => `Guaranteed by pull ${n}.`,
+    noGuarantee: "No pull guarantees it.",
+    compare: "Compare with another plan",
+    details: "More details",
+    exSpecific: (name, pulls) => `Will I get ${name} with ${pulls} pulls?`,
+    exDifferent: (k, name, pulls) => `${k} different ${plurals(name)} with ${pulls} pulls?`,
+    exEvery: (n, name) => `How many pulls for all ${n} ${plurals(name)}?`,
+  },
+  terms: {
+    average: "The mean number of pulls: what it takes on average",
+    median: "Half of players are done by this pull",
+    p90: "9 in 10 players are done by this pull",
+    p99: "99 in 100 players are done by this pull",
+    guaranteed: "The banner's guarantees make it certain by this pull",
+  },
   stats: {
     average: "Average",
     averageSub: (sd) => `± ${sd} pulls`,

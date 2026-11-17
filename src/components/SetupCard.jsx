@@ -165,6 +165,13 @@ function SettingsPanel({ settings: s, setSettings }) {
       <SettingRow label={L.percentiles} hint={L.percentilesHint} wide>
         <input type="text" className="custom-input" value={s.pct} onChange={(e) => set("pct", e.target.value)} />
       </SettingRow>
+      <SettingRow label={L.wording} hint={L.wordingHint}>
+        <select className="select" value={s.wording ?? "auto"} onChange={(e) => set("wording", e.target.value)}>
+          <option value="auto">{L.wordingAuto}</option>
+          <option value="simple">{L.wordingSimple}</option>
+          <option value="technical">{L.wordingTechnical}</option>
+        </select>
+      </SettingRow>
       <SettingRow label={L.showBest} hint={L.showBestHint}>
         <span className="switch-row">
           <input type="checkbox" className="switch" checked={s.showBest !== false} onChange={(e) => set("showBest", e.target.checked)} />

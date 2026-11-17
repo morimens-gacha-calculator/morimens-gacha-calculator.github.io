@@ -6,7 +6,28 @@ import en from "./en.js";
 import ru from "./ru.js";
 import uk from "./ua.js";
 
+import enSimple from "./simple/en.js";
+import ruSimple from "./simple/ru.js";
+import ukSimple from "./simple/ua.js";
+
 export const LOCALES = { en, ru, uk };
+// Everyday wording per language: only the texts that differ from the normal ones
+export const SIMPLE_WORDING = { en: enSimple, ru: ruSimple, uk: ukSimple };
+
+// The texts with the simple wording laid over them (sections merged one level deep)
+const wordingCache = new Map();
+export function withWording(code, simple) {
+  const base = LOCALES[code] ?? LOCALES[DEFAULT_LOCALE];
+  if (!simple) return base;
+  if (!wordingCache.has(code)) {
+    const over = SIMPLE_WORDING[code] ?? {};
+    const out = { ...base };
+    for (const [k, v] of Object.entries(over)) out[k] = v && typeof v === "object" && !Array.isArray(v) ? { ...base[k], ...v } : v;
+    out.simpleWording = true;
+    wordingCache.set(code, out);
+  }
+  return wordingCache.get(code);
+}
 export const DEFAULT_LOCALE = "en";
 
 // The best match for the visitor's browser languages, e.g. "uk-UA" → "uk"

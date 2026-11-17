@@ -65,18 +65,22 @@ export function sample(values, xMax, max = 900) {
   return out;
 }
 
-export default function ResultChart({ state, update, engine, theme }) {
+// simple: the simple view's chart: chance by pull only, with the lines its answer mentions
+// (your pulls, average, half, 9 in 10, earliest and guaranteed by), no menus
+export default function ResultChart({ state, update, engine, theme, simple = false }) {
   const T = useT();
   const L = T.chart;
   const [view, setView] = useState("cdf");
   const chartRef = useRef(null);
   const r = engine.result;
   const b = r?.budget;
-  const lines = { ...DEFAULT_LINES, ...state.chartLines };
+  const lines = simple
+    ? { ...DEFAULT_LINES, target: true, mean: true, pcts: [50, 90], best: true, worst: true, custom: [] }
+    : { ...DEFAULT_LINES, ...state.chartLines };
   const target = state.mode === "budget" ? state.budget : r?.requiredPulls;
   const views = [["cdf", L.cdf], ["pmf", L.pmf]];
   if (b) views.push(["progress", L.progress]);
-  const active = views.some(([v]) => v === view) ? view : "cdf";
+  const active = !simple && views.some(([v]) => v === view) ? view : "cdf";
   const pctOptions = [...new Set([50, ...listOfInts(state.settings.pct).filter((x) => x > 0 && x < 100)])].sort((a, c) => a - c);
 
   const chart = useMemo(() => {
@@ -95,7 +99,7 @@ export default function ResultChart({ state, update, engine, theme }) {
 
     // The lines the person picked
     const markers = [];
-    if (lines.mean) markers.push({ x: r.mean, label: L.average(fmtNum(r.mean)), color: C.guide });
+    if (lines.mean) markers.push({ x: r.mean, label: L.average(simple ? fmtInt(r.mean) : fmtNum(r.mean)), color: C.guide });
     for (const p of lines.pcts) {
       const x = quantile(p / 100);
       if (x != null) markers.push({ x, label: p === 50 ? L.median(fmtInt(x)) : L.pctAt(p, fmtInt(x)), color: C.guide });
@@ -138,13 +142,13 @@ export default function ResultChart({ state, update, engine, theme }) {
       },
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [r, b, active, target, state.mode, state.desired, state.chartLines, state.settings.decimals, theme, T]);
+  }, [r, b, active, target, state.mode, state.desired, state.chartLines, state.settings.decimals, state.settings.showBest, state.settings.showWorst, simple, theme, T]);
 
   const setLines = (patch) => update((s) => ({ ...s, chartLines: { ...DEFAULT_LINES, ...s.chartLines, ...patch } }));
 
   return (
-    <div className="chart-wrapper">
-      <div className="chart-toolbar">
+    <div className={`chart-wrapper ${simple ? "is-simple" : ""}`}>
+      {!simple && <div className="chart-toolbar">
         <div className="chart-tabs" role="tablist" aria-label={L.tabs}>
           {views.map(([v, label]) => (
             <button key={v} type="button" role="tab" aria-selected={active === v} className={`chip-tab ${active === v ? "is-active" : ""}`} onClick={() => setView(v)}>{label}</button>
@@ -155,7 +159,7 @@ export default function ResultChart({ state, update, engine, theme }) {
           showBest={state.settings.showBest !== false} showWorst={state.settings.showWorst !== false} hasBest={r?.min != null} />
           <ExportMenu result={engine.status === "busy" ? null : r} chartRef={chartRef} state={state} viewName={views.find(([v]) => v === active)?.[1]} />
         </div>
-      </div>
+      </div>}
       <div className="chart-container">
         {chart && (
           <Line

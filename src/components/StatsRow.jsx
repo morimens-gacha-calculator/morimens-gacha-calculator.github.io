@@ -2,19 +2,24 @@ import { fmtInt, fmtNum } from "../model.js";
 import { useT } from "../i18n/index.js";
 
 export default function StatsRow({ engine, settings }) {
-  const L = useT().stats;
+  const T = useT();
+  const L = T.stats;
+  // with the technical wording, each term explains itself on hover or tap
+  const term = (label, explain) => (T.simpleWording ? label : <span className="term" title={explain} tabIndex={0}>{label}</span>);
   const r = engine.result;
   if (!r) return null;
   const tiles = [
-    [L.average, fmtNum(r.mean), L.averageSub(fmtNum(r.sd))],
-    [L.median, fmtInt(r.median), L.medianSub],
-    [L.p90, fmtInt(r.percentiles.p90 ?? null), L.pulls],
-    r.max != null && settings?.showWorst !== false ? [L.guaranteed, fmtInt(r.max), L.guaranteedSub] : [L.p99, fmtInt(r.percentiles.p99 ?? null), settings?.showWorst === false ? L.pulls : r.maxKnown === false ? L.guaranteeUnknown : L.noGuarantee],
+    [term(L.average, T.terms.average), fmtNum(r.mean), L.averageSub(fmtNum(r.sd)), "avg"],
+    [term(L.median, T.terms.median), fmtInt(r.median), L.medianSub, "med"],
+    [term(L.p90, T.terms.p90), fmtInt(r.percentiles.p90 ?? null), L.pulls, "p90"],
+    r.max != null && settings?.showWorst !== false
+      ? [term(L.guaranteed, T.terms.guaranteed), fmtInt(r.max), L.guaranteedSub, "max"]
+      : [term(L.p99, T.terms.p99), fmtInt(r.percentiles.p99 ?? null), settings?.showWorst === false ? L.pulls : r.maxKnown === false ? L.guaranteeUnknown : L.noGuarantee, "p99"],
   ];
   return (
     <div className={`stats-row ${engine.status === "busy" ? "is-busy" : ""}`}>
-      {tiles.map(([k, v, s]) => (
-        <div className="stat" key={k}>
+      {tiles.map(([k, v, s, id]) => (
+        <div className="stat" key={id}>
           <span className="stat-label">{k}</span>
           <span className="stat-value">{v}</span>
           <span className="stat-sub">{s}</span>

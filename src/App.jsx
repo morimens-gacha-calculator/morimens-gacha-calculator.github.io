@@ -4,7 +4,7 @@ import { useEngine } from "./useEngine.js";
 import { decodeSetup, linkCode, makeShareLink, makeShortLink, shareParts, shareSummary } from "./share.js";
 import { shareCard } from "./export.js";
 import { useCompare } from "./useCompare.js";
-import { I18nContext, LOCALES, browserLocale, setLocale } from "./i18n/index.js";
+import { I18nContext, LOCALES, browserLocale, setLocale, withWording } from "./i18n/index.js";
 import { BACKGROUND, DEFAULT_THEME, DEFAULT_PRESET, SITE_NAME, BANNERS_PATCH, SOURCE_URL } from "./site.config.js";
 import { HelpContext } from "./components/Help.jsx";
 import BannerPicker from "./components/BannerPicker.jsx";
@@ -16,6 +16,7 @@ import StatsRow from "./components/StatsRow.jsx";
 import Distribution from "./components/Distribution.jsx";
 import PercentileTable from "./components/PercentileTable.jsx";
 import ComparePanel from "./components/ComparePanel.jsx";
+import SimpleView from "./components/SimpleView.jsx";
 
 const STORE_KEY = "banner-calc-v2";
 const COMPARE_KEY = "banner-calc-compare";
@@ -56,7 +57,8 @@ const snapshotOf = (s) => ({ preset: s.preset, banner: s.banner, goal: s.goal, g
 
 export default function App() {
   const [lang, setLang] = useState(loadLang);
-  const T = LOCALES[lang];
+  // nothing saved yet and no shared link: show the example questions
+  const [firstVisit, setFirstVisit] = useState(() => !read(STORE_KEY) && !linkCode(window.location.hash));
   // Settings belong to the calculator, not to a banner: kept apart, so picking a banner,
   // Reset, a shared link or loading a comparison never changes them
   const [settings, setSettings] = useState(() => {
@@ -76,6 +78,11 @@ export default function App() {
   // What the components see: the setup with the current settings. Changes to it keep the
   // settings as they are (they change only through setSettings).
   const state = useMemo(() => ({ ...setup, settings }), [setup, settings]);
+  // the simple view, and its everyday wording (Settings › Wording can choose either wording)
+  const simpleView = (settings.view ?? "simple") === "simple";
+  const simpleWording = settings.wording === "simple" || ((settings.wording ?? "auto") === "auto" && simpleView);
+  const T = useMemo(() => withWording(lang, simpleWording), [lang, simpleWording]);
+  const setViewMode = (v) => setSettings((cur) => ({ ...cur, view: v }));
   const setState = useCallback((v) => setSetup((cur) => {
     const next = typeof v === "function" ? v({ ...cur, settings }) : v;
     const { settings: _ignored, ...rest } = next; // eslint-disable-line no-unused-vars
@@ -192,6 +199,10 @@ export default function App() {
                     </select>
                   </label>
                 )}
+                <div className="view-switch" role="group" aria-label={T.app.viewLabel}>
+                  <button type="button" aria-pressed={simpleView} className={simpleView ? "is-on" : ""} onClick={() => setViewMode("simple")}>{T.app.viewSimple}</button>
+                  <button type="button" aria-pressed={!simpleView} className={!simpleView ? "is-on" : ""} onClick={() => setViewMode("full")}>{T.app.viewFull}</button>
+                </div>
                 <button type="button" className="btn btn--ghost" onClick={toggleTheme}>{theme === "dark" ? T.app.lightTheme : T.app.darkTheme}</button>
                 <button type="button" className="btn btn--ghost" onClick={() => setShowHelp((v) => !v)}>{showHelp ? T.app.hideHelp : T.app.showHelp}</button>
               </div>
@@ -211,6 +222,12 @@ export default function App() {
               }}
               linkError={linkError} onDismissError={() => setLinkError(false)} />
 
+            {simpleView ? (
+              <SimpleView state={state} update={update} engine={engine} theme={theme}
+                firstVisit={firstVisit} onExampleDone={() => setFirstVisit(false)}
+                onCompare={() => { addToCompare(); setViewMode("full"); setView("compare"); }}
+                onDetails={() => { setViewMode("full"); setView("single"); }} />
+            ) : (
             <div className="workspace">
               <div className="inputs-col">
                 <SetupCard state={state} update={update} setState={setState} setSettings={setSettings} tabRequest={tabRequest} />
@@ -241,6 +258,7 @@ export default function App() {
                 )}
               </div>
             </div>
+            )}
           </section>
         </main>
         <footer className="footer">
