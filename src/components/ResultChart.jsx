@@ -15,7 +15,7 @@ export function themeColors() {
   const v = (name) => cs.getPropertyValue(name).trim();
   return {
     line: v("--blue"), fill: v("--chart-fill"), tick: v("--chart-tick"), grid: v("--chart-grid"),
-    marker: v("--chart-marker"), guide: v("--chart-guide"), series: [v("--s1"), v("--s2"), v("--s3"), v("--s4"), v("--s5"), v("--s6")],
+    marker: v("--chart-marker"), guide: v("--chart-guide"), accent: v("--accent"), series: [v("--s1"), v("--s2"), v("--s3"), v("--s4"), v("--s5"), v("--s6")],
   };
 }
 
@@ -26,16 +26,20 @@ const markerPlugin = {
     const { ctx, chartArea: area, scales } = chart;
     const items = [...(opts?.items ?? [])].sort((a, b) => a.x - b.x);
     const rowsEnd = []; // right edge of the last label in each row
-    for (const m of items) {
-      const x = scales.x.getPixelForValue(m.x);
-      if (x < area.left - 1 || x > area.right + 1) continue;
+    const shown = items.map((m) => ({ m, x: scales.x.getPixelForValue(m.x) })).filter(({ x }) => x >= area.left - 1 && x <= area.right + 1);
+    // all lines first, then all labels, so no line crosses a label
+    for (const { m, x } of shown) {
       ctx.save();
       ctx.strokeStyle = m.color;
-      ctx.lineWidth = m.strong ? 2 : 1;
-      ctx.setLineDash(m.strong ? [] : [4, 4]);
+      // strong: solid (your pulls); accent: a thicker, coloured dash (the average); otherwise a thin dash
+      ctx.lineWidth = m.strong || m.accent ? 2 : 1;
+      ctx.setLineDash(m.strong ? [] : m.accent ? [6, 3] : [4, 4]);
       ctx.beginPath(); ctx.moveTo(x, area.top); ctx.lineTo(x, area.bottom); ctx.stroke();
-      ctx.setLineDash([]);
-      ctx.font = `${m.strong ? 600 : 500} 12px Roboto, system-ui, sans-serif`;
+      ctx.restore();
+    }
+    for (const { m, x } of shown) {
+      ctx.save();
+      ctx.font = `${m.strong || m.accent ? 600 : 500} 12px Roboto, system-ui, sans-serif`;
       const w = ctx.measureText(m.label).width;
       const right = x + 6 + w > area.right; // flip to the left side near the right edge
       const x0 = right ? x - 6 - w : x + 6;
@@ -67,7 +71,8 @@ export function sample(values, xMax, max = 900) {
 
 // simple: the simple view's chart: chance by pull only, with the lines its answer mentions
 // (your pulls, average, half, 9 in 10, earliest and guaranteed by), no menus
-export default function ResultChart({ state, update, engine, theme, simple = false }) {
+// children (simple view only): buttons shown in a row under the chart, next to Export
+export default function ResultChart({ state, update, engine, theme, simple = false, children }) {
   const T = useT();
   const L = T.chart;
   const [view, setView] = useState("cdf");
@@ -75,7 +80,7 @@ export default function ResultChart({ state, update, engine, theme, simple = fal
   const r = engine.result;
   const b = r?.budget;
   const lines = simple
-    ? { ...DEFAULT_LINES, target: true, mean: true, pcts: [50, 90], best: true, worst: true, custom: [] }
+    ? { ...DEFAULT_LINES, target: true, mean: true, pcts: [50, 90], best: false, worst: false, custom: [] }
     : { ...DEFAULT_LINES, ...state.chartLines };
   const target = state.mode === "budget" ? state.budget : r?.requiredPulls;
   const views = [["cdf", L.cdf], ["pmf", L.pmf]];
@@ -99,7 +104,7 @@ export default function ResultChart({ state, update, engine, theme, simple = fal
 
     // The lines the person picked
     const markers = [];
-    if (lines.mean) markers.push({ x: r.mean, label: L.average(simple ? fmtInt(r.mean) : fmtNum(r.mean)), color: C.guide });
+    if (lines.mean) markers.push({ x: r.mean, label: L.average(simple ? fmtInt(r.mean) : fmtNum(r.mean)), color: C.accent || C.guide, accent: true });
     for (const p of lines.pcts) {
       const x = quantile(p / 100);
       if (x != null) markers.push({ x, label: p === 50 ? L.median(fmtInt(x)) : L.pctAt(p, fmtInt(x)), color: C.guide });
@@ -182,6 +187,12 @@ export default function ResultChart({ state, update, engine, theme, simple = fal
         )}
         {engine.status === "busy" && <div className="loading-overlay"><Progress engine={engine} /></div>}
       </div>
+      {simple && (
+        <div className="s-actions">
+          {children}
+          <ExportMenu result={engine.status === "busy" ? null : r} chartRef={chartRef} state={state} viewName={L.cdf} buttonClass="btn" up />
+        </div>
+      )}
     </div>
   );
 }
@@ -202,7 +213,7 @@ export function usePopup() {
 }
 
 // "Export ▾": the numbers as CSV (for spreadsheets) and the chart as a PNG image
-function ExportMenu({ result, chartRef, state, viewName }) {
+function ExportMenu({ result, chartRef, state, viewName, buttonClass = "chip-tab", up = false }) {
   const L = useT().chart;
   const { open, setOpen, ref } = usePopup();
 
@@ -217,9 +228,9 @@ function ExportMenu({ result, chartRef, state, viewName }) {
   };
   return (
     <div className="lines-menu" ref={ref}>
-      <button type="button" className="chip-tab" aria-expanded={open} disabled={!result} onClick={() => setOpen((o) => !o)}>{L.export} ▾</button>
+      <button type="button" className={buttonClass} aria-expanded={open} disabled={!result} onClick={() => setOpen((o) => !o)}>{L.export} ▾</button>
       {open && result && (
-        <div className="lines-pop" role="menu" aria-label={L.export}>
+        <div className={`lines-pop ${up ? "is-up" : ""}`} role="menu" aria-label={L.export}>
           <button type="button" role="menuitem" className="menu-item" onClick={() => run(() => downloadCsv(fileName(title, L.fileByPull) + ".csv", chanceByPullRows(result, L)))}>{L.exportByPull}</button>
           {result.budget && (
             <button type="button" role="menuitem" className="menu-item" onClick={() => run(() => downloadCsv(fileName(title, L.fileBudget(result.budget.pulls)) + ".csv", budgetRows(result.budget, L)))}>{L.exportBudget(result.budget.pulls)}</button>

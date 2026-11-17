@@ -9,6 +9,8 @@ const place = (where) => (where ? `"${where}"` : "The banner's top level");
 const plural = (n, one, many) => (n === 1 ? one : many);
 
 // "character" → "characters" (names that already end in s stay as they are)
+// Numbers often arrive formatted ("1,529"), so take the digits out of the string
+const digits = (s) => Number(String(s).replace(/\D/g, "")) || 0;
 const plurals = (name) => (/s$/i.test(name) ? name : `${name}s`);
 
 export default {
@@ -283,18 +285,19 @@ export default {
     moreOptions: "More options",
     lessOptions: "Fewer options",
     moreHint: "Copies you already own can now be set above. Banner rules, comparisons and every detail are in the full view.",
-    contextBudget: (goals, pulls) => `${goals}, with ${pulls} pulls`,
+    contextBudget: (goals, pulls) => `${goals}, with ${pulls} ${plural(digits(pulls), "pull", "pulls")}`,
     contextPulls: (goals) => `${goals}: how many pulls you need`,
     youHave: (pct) => `You have a ${pct} chance`,
-    averageBig: (n) => `On average it takes ${n} pulls`,
-    average: (n) => `On average it takes ${n} pulls.`,
-    halfAndNine: (a, b) => `Half of players are done by ${a}; 9 in 10 by ${b}.`,
+    averageBig: (n, v = n) => `On average it takes ${n} ${plural(digits(v), "pull", "pulls")}`,
+    statHalf: "Half of players finish by pull",
+    statNine: "9 in 10 players finish by pull",
+    statEarliest: "Earliest possible pull",
+    statGuaranteed: "Guaranteed by pull",
+    statGuarantee: "Guarantee",
+    statNone: "none",
     toBeSure: "To be",
     sureLabel: "How sure, in percent",
-    sureResult: (n) => `% sure, you need ${n} pulls.`,
-    earliest: (n) => `Earliest possible: pull ${n}.`,
-    guaranteedBy: (n) => `Guaranteed by pull ${n}.`,
-    noGuarantee: "No pull guarantees it.",
+    sureResult: (n, v = n) => `% sure, you need ${n} ${plural(digits(v), "pull", "pulls")}.`,
     compare: "Compare with another plan",
     details: "More details",
     exSpecific: (name, pulls) => `Will I get ${name} with ${pulls} pulls?`,

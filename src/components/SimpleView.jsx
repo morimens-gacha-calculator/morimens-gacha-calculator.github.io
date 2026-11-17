@@ -188,6 +188,14 @@ function quantile(r, p) {
   return null;
 }
 
+// A sentence with its key number set off: the template is filled with a marker, then split around it.
+// The value itself goes along as the second argument, so the words around it can agree with it.
+const MARK = "\u0001";
+function highlight(template, value) {
+  const [before, after = ""] = template(MARK, value).split(MARK);
+  return <>{before}<strong className="s-hl">{value}</strong>{after}</>;
+}
+
 function Answer({ state, update, engine, theme, onCompare, onDetails }) {
   const T = useT();
   const S = T.simple;
@@ -201,40 +209,46 @@ function Answer({ state, update, engine, theme, onCompare, onDetails }) {
   if (!r) return <section className="s-card s-answer" aria-label={S.answerLabel}><Progress engine={engine} /></section>;
   const half = quantile(r, 0.5), nine = quantile(r, 0.9);
   const chance = r.budget?.chanceGoal;
+  const showBest = settings.showBest !== false && r.min != null && r.min > 0;
+  const showWorst = settings.showWorst !== false && r.maxKnown !== false;
+  const stats = [
+    half != null && [S.statHalf, fmtInt(half)],
+    nine != null && [S.statNine, fmtInt(nine)],
+    showBest && [S.statEarliest, fmtInt(r.min)],
+    showWorst && (r.max != null ? [S.statGuaranteed, fmtInt(r.max)] : [S.statGuarantee, S.statNone]),
+  ].filter(Boolean);
   return (
     <section className={`s-card s-answer ${engine.status === "busy" ? "is-updating" : ""}`} aria-label={S.answerLabel} aria-busy={engine.status === "busy"}>
       {engine.status === "busy" && <Progress engine={engine} compact />}
       <p className="s-context">{budgetMode ? S.contextBudget(goals, fmtInt(state.budget)) : S.contextPulls(goals)}</p>
       {budgetMode && chance != null ? (
-        <p className="s-big">{S.youHave(fmtPct(chance))}</p>
+        <>
+          <p className="s-big">{highlight(S.youHave, fmtPct(chance))}</p>
+          <p className="s-second">{highlight(S.averageBig, fmtInt(r.mean))}</p>
+        </>
       ) : (
-        <p className="s-big">{S.averageBig(fmtInt(r.mean))}</p>
+        <p className="s-big">{highlight(S.averageBig, fmtInt(r.mean))}</p>
       )}
-      <ul className="s-facts">
-        {budgetMode && <li>{S.average(fmtInt(r.mean))}</li>}
-        {half != null && nine != null && <li>{S.halfAndNine(fmtInt(half), fmtInt(nine))}</li>}
-        {!budgetMode && (
-          <li className="s-sure">
-            <span>{S.toBeSure}</span>
-            <NumberInput className="custom-input s-field s-num" integer={false} min={1} max={99.99} value={state.desired}
-              onChange={(v) => update((s) => ({ ...s, desired: v }))} aria-label={S.sureLabel} />
-            <span>{S.sureResult(r.requiredPulls != null ? fmtInt(r.requiredPulls) : "-")}</span>
-          </li>
-        )}
-        {(settings.showBest !== false && r.min != null && r.min > 0) || (settings.showWorst !== false && r.maxKnown !== false) ? (
-          <li className="s-muted">
-            {settings.showBest !== false && r.min != null && r.min > 0 && S.earliest(fmtInt(r.min))}
-            {settings.showBest !== false && r.min != null && r.min > 0 && settings.showWorst !== false && r.maxKnown !== false && " "}
-            {settings.showWorst !== false && r.maxKnown !== false && (r.max != null ? S.guaranteedBy(fmtInt(r.max)) : S.noGuarantee)}
-          </li>
-        ) : null}
-      </ul>
+      {!budgetMode && (
+        <p className="s-sure">
+          <span>{S.toBeSure}</span>
+          <NumberInput className="custom-input s-field s-num" integer={false} min={1} max={99.99} value={state.desired}
+            onChange={(v) => update((s) => ({ ...s, desired: v }))} aria-label={S.sureLabel} />
+          <span>{highlight(S.sureResult, r.requiredPulls != null ? fmtInt(r.requiredPulls) : "-")}</span>
+        </p>
+      )}
+      {stats.length > 0 && (
+        <dl className="s-stats">
+          {stats.map(([label, value]) => (
+            <div key={label} className="s-stat"><dt>{label}</dt><dd>{value}</dd></div>
+          ))}
+        </dl>
+      )}
       {budgetMode && r.min != null && state.budget < r.min && <p className="note-box" role="status">{T.target.notPossible(fmtInt(r.min))}</p>}
-      <ResultChart state={state} update={update} engine={engine} theme={theme} simple />
-      <div className="s-actions">
+      <ResultChart state={state} update={update} engine={engine} theme={theme} simple>
         <button type="button" className="btn" onClick={onCompare}>{S.compare}</button>
         <button type="button" className="btn" onClick={onDetails}>{S.details}</button>
-      </div>
+      </ResultChart>
     </section>
   );
 }
