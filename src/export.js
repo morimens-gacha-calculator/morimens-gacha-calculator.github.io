@@ -62,11 +62,11 @@ export function downloadChartPng(chart, name, { background, ink, muted, title, s
   ctx.fillRect(0, 0, out.width, out.height);
   ctx.textBaseline = "top";
   ctx.fillStyle = ink;
-  ctx.font = `600 ${Math.round(15 * scale)}px Roboto, system-ui, sans-serif`;
+  ctx.font = `600 ${Math.round(15 * scale)}px "Inter Variable", system-ui, sans-serif`;
   ctx.fillText(title, pad, pad, src.width);
   if (subtitle) {
     ctx.fillStyle = muted;
-    ctx.font = `400 ${Math.round(12.5 * scale)}px Roboto, system-ui, sans-serif`;
+    ctx.font = `400 ${Math.round(12.5 * scale)}px "Inter Variable", system-ui, sans-serif`;
     ctx.fillText(subtitle, pad, pad + Math.round(21 * scale), src.width);
   }
   ctx.drawImage(src, pad, pad + head);
@@ -84,7 +84,7 @@ export function shareCard({ title, detail }, chartCanvas) {
   const v = (n, d) => cs.getPropertyValue(n).trim() || d;
   ctx.fillStyle = v("--pop-bg", "#15172a");
   ctx.fillRect(0, 0, W, H);
-  const font = (w, px) => `${w} ${px}px Roboto, system-ui, sans-serif`;
+  const font = (w, px) => `${w} ${px}px "Inter Variable", system-ui, sans-serif`;
   // title: up to two lines, cut with "…"
   ctx.textBaseline = "top";
   ctx.fillStyle = v("--ink", "#eceef6");

@@ -3,7 +3,8 @@ import { useT } from "../i18n/index.js";
 import NumberInput from "./NumberInput.jsx";
 import Progress from "./Progress.jsx";
 import ItemPicker from "./ItemPicker.jsx";
-import { allAlts, itemNames, newId, num } from "../model.js";
+import { TrashIcon } from "./Icon.jsx";
+import { allAlts, itemNames, newId, num, rowSubset } from "../model.js";
 
 // The pull plan: one row per thing you want
 export default function PullPlan({ state, update, onCalculate, onAddCompare, note, engine }) {
@@ -42,6 +43,8 @@ export default function PullPlan({ state, update, onCalculate, onAddCompare, not
           const isPool = !!a?.isPool;
           const names = a ? itemNames(a.alt) : [];
           const dupItem = r.type === "specific" && state.goal.some((q) => q !== r && q.type === "specific" && q.path === r.path && (q.item ?? 0) === (r.item ?? 0));
+          // the names the "Have (per item)" list follows: the chosen items in order, or the whole pool
+          const haveOrder = (row) => (rowSubset(state.banner, row) ?? names.map((_, i) => i)).map((i) => names[i]);
           return (
             <div className="plan-row" key={r.id}>
               <label className="field grow">
@@ -82,7 +85,8 @@ export default function PullPlan({ state, update, onCalculate, onAddCompare, not
                 <label className="field">
                   <span className="field-label">{r.type === "distinct" ? L.havePerItem : L.have}</span>
                   {r.type === "distinct" && isPool
-                    ? <input type="text" className="custom-input w-m" placeholder={names.slice(0, 5).map(() => 0).join(",")} value={r.from} onChange={(e) => setRow(r.id, { from: e.target.value })} aria-label={L.havePerItemLabel} />
+                    ? <input type="text" className="custom-input w-m" placeholder={haveOrder(r).slice(0, 5).map(() => 0).join(",")} value={r.from} onChange={(e) => setRow(r.id, { from: e.target.value })}
+                        aria-label={L.havePerItemLabel} title={L.haveOrder(haveOrder(r).join(", "))} />
                     : <input type="number" min="0" className="custom-input w-xs" placeholder="0" value={r.from} onChange={(e) => setRow(r.id, { from: e.target.value })} />}
                 </label>
                 <span className="arrow" aria-hidden="true">→</span>
@@ -91,8 +95,11 @@ export default function PullPlan({ state, update, onCalculate, onAddCompare, not
                   <NumberInput min={1} className="custom-input w-xs" value={r.copies} onChange={(v) => setRow(r.id, { copies: v })} />
                 </label>
               </div>
-              <button type="button" className="btn btn--delete" onClick={() => removeRow(r.id)} aria-label={L.removeRow} disabled={state.goal.length <= 1}>×</button>
+              <button type="button" className="btn btn--delete" onClick={() => removeRow(r.id)} aria-label={L.removeRow} disabled={state.goal.length <= 1}><TrashIcon /></button>
               {dupItem && <p className="row-note">{L.dupItem(names[r.item ?? 0])}</p>}
+              {r.type === "distinct" && isPool && String(r.from ?? "").trim() !== "" && (
+                <p className="row-hint">{L.haveOrder(haveOrder(r).slice(0, 8).join(", ") + (haveOrder(r).length > 8 ? ", …" : ""))}</p>
+              )}
             </div>
           );
         })}

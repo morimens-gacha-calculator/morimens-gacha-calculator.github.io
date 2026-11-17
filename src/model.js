@@ -260,6 +260,18 @@ export function rowSubset(tree, r) {
   return items.length === n ? null : items;
 }
 
+// A "different items" row's "Have" list, per item of the pool. The list follows the row's chosen
+// items in order when it has some (GDoll, Pollux, Pontos → 1,2,2), else the whole pool's order.
+export function ownedPerItem(tree, r) {
+  const t = allAlts(tree).find((a) => a.key === r.path);
+  const n = t?.isPool ? Math.floor(num(t.alt.count, 1)) : 0;
+  const list = listOfInts(r.from);
+  const out = Array(n).fill(0);
+  const sub = rowSubset(tree, r);
+  (sub ?? out.map((_, i) => i)).forEach((item, j) => { if (item < n) out[item] = list[j] ?? 0; });
+  return out;
+}
+
 export function reqLabel(tree, r) {
   const L = getStrings().goalLabel;
   const t = allAlts(tree).find((a) => a.key === r.path);
@@ -267,7 +279,7 @@ export function reqLabel(tree, r) {
   const n = !t ? r.path : sub?.length ? L.subset(sub.map((i) => itemNames(t.alt)[i]), t.name) : t.name;
   // copies already owned ("Have"): one number for totals and specific items, one per item for
   // "different items" (shown as their sum)
-  const have = r.type === "distinct" ? listOfInts(r.from).reduce((s, x) => s + x, 0) : Math.max(0, Math.floor(num(r.from, 0)));
+  const have = r.type === "distinct" ? ownedPerItem(tree, r).reduce((s, x) => s + x, 0) : Math.max(0, Math.floor(num(r.from, 0)));
   if (sub?.length && r.type === "distinct") return L.distinctFrom(r.k, n, r.copies, have);
   if (r.type === "total") return L.total(n, r.copies, have);
   if (r.type === "specific") return L.specific(t ? itemNames(t.alt)[r.item ?? 0] ?? n : n, r.copies, have);
@@ -319,7 +331,7 @@ export function buildQuery(state) {
       // Per item: a "different items" row gives a list; "specific" rows set their own item
       const n = Math.floor(num(a.alt.count, 1));
       const d = rows.find((r) => r.type === "distinct" && String(r.from).trim() !== "");
-      const items = Array.from({ length: n }, (_, i) => (d ? listOfInts(d.from)[i] ?? 0 : 0));
+      const items = d ? ownedPerItem(banner, d) : Array(n).fill(0);
       for (const r of rows) if (r.type === "specific" && String(r.from).trim() !== "") items[r.item ?? 0] = Math.max(0, Math.floor(num(r.from)));
       if (items.some((x) => x > 0)) q.start.owned[path] = items;
     } else {

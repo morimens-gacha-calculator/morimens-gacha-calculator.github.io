@@ -1,9 +1,14 @@
-import { useEffect, useState } from "react";
-import { allAlts, allNodes, fmtInt, fmtPct, itemNames, newId, num, reqLabel } from "../model.js";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Line } from "react-chartjs-2";
+import { allAlts, allNodes, fmtInt, fmtPct, itemNames, listOfInts, newId, num, reqLabel } from "../model.js";
 import { errorText, useT } from "../i18n/index.js";
 import NumberInput from "./NumberInput.jsx";
 import Progress from "./Progress.jsx";
-import ResultChart from "./ResultChart.jsx";
+import ResultChart, { sample, themeColors } from "./ResultChart.jsx";
+import ItemPicker from "./ItemPicker.jsx";
+import { HelpButton } from "./Help.jsx";
+import { TrashIcon } from "./Icon.jsx";
+import { CompareExport } from "./ComparePanel.jsx";
 
 // The simple view: the plan as a sentence ("I want any character ×2 and Pontos's wheel ×1, I
 // have 300 pulls…") and the answer in words, with one chart. It edits the same setup as the full
@@ -39,16 +44,19 @@ const poolSize = (banner, path) => {
   const a = allAlts(banner).find((x) => x.key === path);
   return a?.isPool ? itemNames(a.alt).length : 1;
 };
+// how many items a row counts: its chosen ones, or the whole pool
+const countedSize = (banner, row) => (Array.isArray(row.items) && row.type !== "specific" ? row.items.length : poolSize(banner, row.path));
 
 export function rowChoice(banner, row) {
   const a = allAlts(banner).find((x) => x.key === row.path);
   if (!a) return "custom";
-  const subset = Array.isArray(row.items) && row.items.length && row.type !== "specific";
+  const subset = Array.isArray(row.items) && row.type !== "specific";
   if (a.isPool) {
-    if (subset) return "custom";
     if (row.type === "total") return `${a.key}|any`;
     if (row.type === "specific") return `${a.key}|item|${row.item ?? 0}`;
-    if (row.type === "distinct") return row.k >= itemNames(a.alt).length ? `${a.key}|every` : `${a.key}|distinct`;
+    // "every" when picked as such; a goal picked as "different" stays so (every: false), even when
+    // its number happens to match the items chosen; goals from the full view go by the numbers
+    if (row.type === "distinct") return row.every !== false && row.k === countedSize(banner, row) ? `${a.key}|every` : `${a.key}|distinct`;
   }
   if (row.type === "total" && !subset && !(a.isLeaf && a.depth === 0)) return `${a.key}|any`;
   return "custom";
@@ -56,15 +64,17 @@ export function rowChoice(banner, row) {
 
 function applyChoice(banner, row, value) {
   const [path, kind, item] = value.split("|");
-  const n = poolSize(banner, path);
-  const base = { ...row, path, items: null, from: path === row.path ? row.from : "" };
+  // the chosen items stay when the outcome stays (any / different / every of the same pool)
+  const items = path === row.path && kind !== "item" ? row.items ?? null : null;
+  const n = Array.isArray(items) ? items.length : poolSize(banner, path);
+  const base = { ...row, path, items, from: path === row.path ? row.from : "" };
   if (kind === "item") return { ...base, type: "specific", item: Number(item), from: path === row.path && row.type === "specific" && row.item === Number(item) ? row.from : "" };
-  if (kind === "every") return { ...base, type: "distinct", k: n, from: "" };
+  if (kind === "every") return { ...base, type: "distinct", k: n, every: true, from: "" };
   if (kind === "distinct") {
     const k = row.type === "distinct" && row.k < n ? row.k : Math.max(2, Math.min(3, n - 1));
-    return { ...base, type: "distinct", k, from: "" };
+    return { ...base, type: "distinct", k, every: false, from: "" };
   }
-  return { ...base, type: "total" };
+  return { ...base, type: "total", every: undefined };
 }
 
 // How a goal reads in the simple view: "any character ×2" where the full view says "character ×2"
@@ -79,15 +89,28 @@ function goalText(banner, row, S) {
 }
 
 // ── Pieces ──────────────────────────────────────────────────────────────────────────────
-function GoalLine({ state, update, row, index, choices, showHave }) {
+function GoalLine({ state, update, row, index, choices }) {
   const T = useT();
   const S = T.simple;
   const value = rowChoice(state.banner, row);
   const kind = value.split("|")[1];
-  const n = poolSize(state.banner, row.path);
+  const n = countedSize(state.banner, row);
   const set = (fn) => update((s) => ({ ...s, goal: s.goal.map((r) => (r.id === row.id ? fn(r) : r)) }));
   const remove = () => update((s) => ({ ...s, goal: s.goal.filter((r) => r.id !== row.id) }));
-  const canHave = kind === "any" || kind === "item";
+  const alt = allAlts(state.banner).find((x) => x.key === row.path);
+  const names = alt?.isPool ? itemNames(alt.alt) : [];
+  const pool = names.length > 0 && kind !== "item";
+  // choosing items keeps "every" meaning all of them, and "different" within what's chosen
+  const pickItems = (items) => set((r) => {
+    const size = Array.isArray(items) ? items.length : names.length;
+    if (kind === "every") return { ...r, items, k: Math.max(1, size) };
+    if (kind === "distinct") return { ...r, items }; // keep the number while items are being picked
+    return { ...r, items };
+  });
+  // copies already owned, only where it reads plainly: one character (or one item) you collect
+  // copies of. Copies set in the full view on other goals are named, with a way to clear them.
+  const canOwn = kind === "item" || (kind === "any" && alt?.isLeaf && !alt.isPool);
+  const ownedElsewhere = !canOwn && String(row.from ?? "").trim() !== "" && listOfInts(row.from).some((x) => x > 0);
   return (
     <div className="s-goal">
       {index > 0 && (
@@ -101,12 +124,17 @@ function GoalLine({ state, update, row, index, choices, showHave }) {
         ) : <span className="s-join-word">{state.goalMode === "all" ? S.and : S.or}</span>
       )}
       <div className="s-goal-fields">
+        <div className="s-what-cell">
         <select className="select s-field s-what" value={value} aria-label={S.whatLabel(index + 1)}
           onChange={(e) => set((r) => applyChoice(state.banner, r, e.target.value))}>
           {value === "custom" && <option value="custom" disabled>{reqLabel(state.banner, row)} ({S.customGoal})</option>}
           {choices.groups.map((g) => (
             <optgroup key={g.label} label={g.label}>
-              {g.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              {g.options.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.value === `${row.path}|every` && Array.isArray(row.items) && row.type !== "specific" ? S.everyOf(g.label, row.items.length) : o.label}
+                </option>
+              ))}
             </optgroup>
           ))}
           {choices.other.length > 0 && (
@@ -115,29 +143,45 @@ function GoalLine({ state, update, row, index, choices, showHave }) {
             </optgroup>
           )}
         </select>
-        {kind === "distinct" && (
-          <label className="s-inline">
-            <NumberInput className="custom-input s-field s-num" min={1} max={n} value={row.k}
-              onChange={(v) => set((r) => ({ ...r, k: v }))} aria-label={S.howManyDifferent} />
-            <span>{S.different}</span>
-          </label>
-        )}
-        <label className="s-inline">
-          <span aria-hidden="true">×</span>
-          <NumberInput className="custom-input s-field s-num" min={1} max={999} value={row.copies}
-            onChange={(v) => set((r) => ({ ...r, copies: v }))} aria-label={S.copiesLabel} />
-          {(kind === "distinct" || kind === "every") && <span>{S.each}</span>}
-        </label>
+        </div>
+        {/* each piece in its own shared column, so "×", the numbers and "each" line up on every row */}
+        <span className="s-times" aria-hidden="true">×</span>
+        <NumberInput className="custom-input s-field s-num s-copies-num" min={1} max={999} value={row.copies}
+          onChange={(v) => set((r) => ({ ...r, copies: v }))} aria-label={S.copiesLabel} />
+        {(kind === "distinct" || kind === "every") && <span className="s-each">{S.each}</span>}
         {state.goal.length > 1 && (
-          <button type="button" className="s-remove" onClick={remove} aria-label={S.removeGoal}>×</button>
+          <button type="button" className="s-remove" onClick={remove} aria-label={S.removeGoal} title={S.removeGoal}><TrashIcon /></button>
         )}
       </div>
-      {showHave && canHave && (
-        <label className="s-inline s-have">
-          <span>{S.alreadyHave}</span>
-          <NumberInput className="custom-input s-field s-num" min={0} max={998} value={Math.floor(num(row.from, 0))}
-            onChange={(v) => set((r) => ({ ...r, from: v ? String(v) : "" }))} aria-label={S.alreadyHave} />
-        </label>
+      {/* the line under the goal: "3 different from [3 chosen]", or "from [All 19]" */}
+      {pool && (
+        <div className="s-inline s-from">
+          {kind === "distinct" && (
+            <label className="s-inline">
+              <NumberInput className="custom-input s-field s-num" min={1} max={n} value={row.k}
+                onChange={(v) => set((r) => ({ ...r, k: v }))} aria-label={S.howManyDifferent} />
+              <span>{S.different}</span>
+            </label>
+          )}
+          <span>{S.fromLabel}</span>
+          <ItemPicker names={names} value={Array.isArray(row.items) && row.items.length < names.length ? row.items : null} onChange={pickItems} />
+        </div>
+      )}
+      {canOwn && (
+        <div className="s-inline s-have">
+          <label className="s-inline">
+            <span>{S.alreadyHave}</span>
+            <NumberInput className="custom-input s-field s-num" min={0} max={998} value={Math.floor(num(row.from, 0))}
+              onChange={(v) => set((r) => ({ ...r, from: v ? String(v) : "" }))} aria-label={S.alreadyHave} />
+          </label>
+          <HelpButton label={S.alreadyHave} text={S.ownHelp} />
+        </div>
+      )}
+      {ownedElsewhere && (
+        <div className="s-inline s-have s-owned-note">
+          <span>{S.ownedElsewhere}</span>
+          <button type="button" className="btn btn--quiet btn--sm" onClick={() => set((r) => ({ ...r, from: "" }))}>{S.clearOwned}</button>
+        </div>
       )}
     </div>
   );
@@ -155,13 +199,43 @@ function StartQuestions({ state, update }) {
   });
   return (
     <>
-      {pityAlts.map((a) => (
-        <label key={a.key} className="s-row">
-          <span>{S.sinceLast(a.name)}</span>
-          <NumberInput className="custom-input s-field s-num" min={0} max={Math.max(0, num(a.alt.pity) - 1)}
-            value={state.start.pity[a.key] ?? 0} onChange={(v) => setPity(a.key, v)} />
-        </label>
-      ))}
+      {/* pity asked the way it counts: pulls at the top level ("Pulls since my last SSR"); results of
+          the outcome above it for nested ones ("SSRs since my last limited wheel"), and a yes/no
+          question when one miss already guarantees it (pity 2: "Is my next SSR a guaranteed …?") */}
+      {pityAlts.map((a) => {
+        const pity = num(a.alt.pity);
+        const value = state.start.pity[a.key] ?? 0;
+        if (a.parentName === null) return (
+          <div key={a.key} className="s-row">
+            <label className="s-row-label">
+              <span>{S.sinceLast(a.name)}</span>
+              <NumberInput className="custom-input s-field s-num" min={0} max={Math.max(0, pity - 1)} value={value} onChange={(v) => setPity(a.key, v)} />
+            </label>
+            <HelpButton label={S.sinceLast(a.name)} text={S.pityHint} />
+          </div>
+        );
+        // these questions are long: question, answer, "?" on one row like the others; when space runs out only the question text wraps
+        const id = `pity-${a.key.replace(/\W/g, "-")}`;
+        if (pity === 2) return (
+          <div key={a.key} className="s-row s-row--stack">
+            <span className="s-q" id={id}>{S.guaranteedNext(a.parentName, a.name)}</span>
+            <span className="seg seg--sm" role="group" aria-labelledby={id}>
+              {[[1, S.guaranteedYes], [0, S.guaranteedNo]].map(([v, label]) => (
+                <button key={v} type="button" aria-pressed={(value > 0 ? 1 : 0) === v} className={(value > 0 ? 1 : 0) === v ? "is-on" : ""}
+                  onClick={() => setPity(a.key, v)}>{label}</button>
+              ))}
+            </span>
+            <HelpButton label={S.guaranteedNext(a.parentName, a.name)} text={S.guaranteedHelp(a.parentName, a.name)} />
+          </div>
+        );
+        return (
+          <div key={a.key} className="s-row s-row--stack">
+            <label className="s-q" htmlFor={id}>{S.sinceLastResult(a.parentName, a.name)}</label>
+            <NumberInput id={id} className="custom-input s-field s-num" min={0} max={pity - 1} value={value} onChange={(v) => setPity(a.key, v)} />
+            <HelpButton label={S.sinceLastResult(a.parentName, a.name)} text={S.sinceLastResultHelp(a.parentName, a.name, pity)} />
+          </div>
+        );
+      })}
       {streakNodes.map((n) => {
         const cur = state.start.streak[n.key] ?? [0, 0];
         const value = cur[1] > 0 ? `${cur[0]}:${Math.min(cur[1], n.node.streak)}` : "";
@@ -177,7 +251,6 @@ function StartQuestions({ state, update }) {
           </label>
         );
       })}
-      {pityAlts.length > 0 && <p className="s-hint">{S.pityHint}</p>}
     </>
   );
 }
@@ -196,7 +269,7 @@ function highlight(template, value) {
   return <>{before}<strong className="s-hl">{value}</strong>{after}</>;
 }
 
-function Answer({ state, update, engine, theme, onCompare, onDetails }) {
+function Answer({ state, update, engine, theme, onCompare, onDetails, isSaved, compare, tab, setTab }) {
   const T = useT();
   const S = T.simple;
   const r = engine.result;
@@ -209,6 +282,12 @@ function Answer({ state, update, engine, theme, onCompare, onDetails }) {
   if (!r) return <section className="s-card s-answer" aria-label={S.answerLabel}><Progress engine={engine} /></section>;
   const half = quantile(r, 0.5), nine = quantile(r, 0.9);
   const chance = r.budget?.chanceGoal;
+  const actions = (
+    <>
+      <button type="button" className="btn btn--primary" onClick={onCompare} disabled={isSaved}>{isSaved ? S.inCompare : S.compare}</button>
+      <button type="button" className="btn btn--secondary" onClick={onDetails}>{S.details}</button>
+    </>
+  );
   const showBest = settings.showBest !== false && r.min != null && r.min > 0;
   const showWorst = settings.showWorst !== false && r.maxKnown !== false;
   const stats = [
@@ -219,36 +298,48 @@ function Answer({ state, update, engine, theme, onCompare, onDetails }) {
   ].filter(Boolean);
   return (
     <section className={`s-card s-answer ${engine.status === "busy" ? "is-updating" : ""}`} aria-label={S.answerLabel} aria-busy={engine.status === "busy"}>
+      {/* first, the switch between this plan and the comparison; each tab has its own numbers and chart */}
+      {compare.items.length > 0 && (
+        <div className="seg s-chart-tabs" role="tablist" aria-label={S.chartTabs}>
+          <button type="button" role="tab" aria-selected={tab === "plan"} className={tab === "plan" ? "is-on" : ""} onClick={() => setTab("plan")}>{S.tabPlan}</button>
+          <button type="button" role="tab" aria-selected={tab === "compare"} className={tab === "compare" ? "is-on" : ""} onClick={() => setTab("compare")}>
+            {S.compareTitle} <span className="count">{compare.items.length}</span>
+          </button>
+        </div>
+      )}
       {engine.status === "busy" && <Progress engine={engine} compact />}
-      <p className="s-context">{budgetMode ? S.contextBudget(goals, fmtInt(state.budget)) : S.contextPulls(goals)}</p>
-      {budgetMode && chance != null ? (
-        <>
-          <p className="s-big">{highlight(S.youHave, fmtPct(chance))}</p>
-          <p className="s-second">{highlight(S.averageBig, fmtInt(r.mean))}</p>
-        </>
+      {tab === "compare" && compare.items.length > 0 ? (
+        <SimpleCompare {...compare} load={(it) => { compare.load(it); setTab("plan"); }} theme={theme} settings={settings} current={isSaved ? null : r}>{actions}</SimpleCompare>
       ) : (
-        <p className="s-big">{highlight(S.averageBig, fmtInt(r.mean))}</p>
+        <>
+          <p className="s-context">{budgetMode ? S.contextBudget(goals, fmtInt(state.budget)) : S.contextPulls(goals)}</p>
+          {budgetMode && chance != null ? (
+            <>
+              <p className="s-big">{highlight(S.youHave, fmtPct(chance))}</p>
+              <p className="s-second">{highlight(S.averageBig, fmtInt(r.mean))}</p>
+            </>
+          ) : (
+            <p className="s-big">{highlight(S.averageBig, fmtInt(r.mean))}</p>
+          )}
+          {!budgetMode && (
+            <p className="s-sure">
+              <span>{S.toBeSure}</span>
+              <NumberInput className="custom-input s-field s-num" integer={false} min={1} max={99.99} value={state.desired}
+                onChange={(v) => update((s) => ({ ...s, desired: v }))} aria-label={S.sureLabel} />
+              <span>{highlight(S.sureResult, r.requiredPulls != null ? fmtInt(r.requiredPulls) : "-")}</span>
+            </p>
+          )}
+          {stats.length > 0 && (
+            <dl className="s-stats">
+              {stats.map(([label, value]) => (
+                <div key={label} className="s-stat"><dt>{label}</dt><dd>{value}</dd></div>
+              ))}
+            </dl>
+          )}
+          {budgetMode && r.min != null && state.budget < r.min && <p className="note-box" role="status">{T.target.notPossible(fmtInt(r.min))}</p>}
+          <ResultChart state={state} update={update} engine={engine} theme={theme} simple>{actions}</ResultChart>
+        </>
       )}
-      {!budgetMode && (
-        <p className="s-sure">
-          <span>{S.toBeSure}</span>
-          <NumberInput className="custom-input s-field s-num" integer={false} min={1} max={99.99} value={state.desired}
-            onChange={(v) => update((s) => ({ ...s, desired: v }))} aria-label={S.sureLabel} />
-          <span>{highlight(S.sureResult, r.requiredPulls != null ? fmtInt(r.requiredPulls) : "-")}</span>
-        </p>
-      )}
-      {stats.length > 0 && (
-        <dl className="s-stats">
-          {stats.map(([label, value]) => (
-            <div key={label} className="s-stat"><dt>{label}</dt><dd>{value}</dd></div>
-          ))}
-        </dl>
-      )}
-      {budgetMode && r.min != null && state.budget < r.min && <p className="note-box" role="status">{T.target.notPossible(fmtInt(r.min))}</p>}
-      <ResultChart state={state} update={update} engine={engine} theme={theme} simple>
-        <button type="button" className="btn" onClick={onCompare}>{S.compare}</button>
-        <button type="button" className="btn" onClick={onDetails}>{S.details}</button>
-      </ResultChart>
     </section>
   );
 }
@@ -272,10 +363,9 @@ function examplesFor(banner, S) {
   return out;
 }
 
-export default function SimpleView({ state, update, engine, theme, firstVisit, onExampleDone, onCompare, onDetails }) {
+export default function SimpleView({ state, update, engine, theme, firstVisit, onExampleDone, onCompare, onDetails, compare, isSaved }) {
   const T = useT();
   const S = T.simple;
-  const [more, setMore] = useState(() => state.goal.some((r) => num(r.from, 0) > 0));
   const choices = goalChoices(state.banner, S);
   const examples = firstVisit ? examplesFor(state.banner, S) : [];
   // the pulls field: empty = "how many do I need" (pulls mode), a number = "do I have enough"
@@ -292,6 +382,9 @@ export default function SimpleView({ state, update, engine, theme, firstVisit, o
     const blank = { id: newId(), path: "0", type: "total", item: 0, k: 1, copies: 1, from: "" };
     return { ...s, goal: [...s.goal, first ? applyChoice(s.banner, blank, first) : blank] };
   });
+  // the answer's chart: this plan, or the comparison (shown after adding a plan to it)
+  const [tab, setTab] = useState("plan");
+  useEffect(() => { if (!compare.items.length) setTab("plan"); }, [compare.items.length]);
   const pick = (ex) => {
     update((s) => ({ ...s, goal: ex.goal, goalMode: "all", mode: ex.mode, budget: ex.budget ?? s.budget }));
     onExampleDone();
@@ -307,28 +400,146 @@ export default function SimpleView({ state, update, engine, theme, firstVisit, o
             <button type="button" className="btn btn--link" onClick={onExampleDone}>{S.ownQuestion}</button>
           </div>
         )}
-        <p className="s-lead">{S.iWant}</p>
+        <h2 className="s-lead">{S.iWant}</h2>
         <div className="s-goals">
+          <div className="s-goal-head" aria-hidden="true"><span>{S.colWhat}</span><span>{S.colHowMany}</span></div>
           {state.goal.map((row, i) => (
-            <GoalLine key={row.id} state={state} update={update} row={row} index={i} choices={choices} showHave={more} />
+            <GoalLine key={row.id} state={state} update={update} row={row} index={i} choices={choices} />
           ))}
         </div>
-        <button type="button" className="btn btn--link s-add" onClick={addGoal}>+ {S.addGoal}</button>
+        <button type="button" className="btn btn--quiet btn--sm s-add" onClick={addGoal}>+ {S.addGoal}</button>
         <div className="s-divider" />
-        <label className="s-row">
-          <span>{S.iHave}</span>
-          <input type="number" inputMode="numeric" min={0} className="custom-input s-field s-num s-pulls" value={pullsText}
-            placeholder="-" onChange={(e) => onPulls(e.target.value)} aria-describedby="s-pulls-note" />
-          <span>{S.pulls}</span>
-          <span id="s-pulls-note" className="s-hint">{S.optional}</span>
-        </label>
+        <div className="s-row">
+          <label className="s-row-label">
+            <span>{S.iHave}</span>
+            <input type="number" inputMode="numeric" min={0} className="custom-input s-field s-num s-pulls" value={pullsText}
+              placeholder="?" onChange={(e) => onPulls(e.target.value)} />
+            <span>{S.pulls}</span>
+          </label>
+          <HelpButton label={S.iHave} text={S.pullsHelp} />
+        </div>
         <StartQuestions state={state} update={update} />
-        <button type="button" className="btn s-more" aria-expanded={more} onClick={() => setMore((m) => !m)}>
-          {more ? S.lessOptions : S.moreOptions}
-        </button>
-        {more && <p className="s-hint">{S.moreHint}</p>}
       </section>
-      <Answer state={state} update={update} engine={engine} theme={theme} onCompare={onCompare} onDetails={onDetails} />
+      <div className="s-side">
+        <Answer state={state} update={update} engine={engine} theme={theme} onDetails={onDetails} isSaved={isSaved}
+          compare={compare} tab={tab} setTab={setTab} onCompare={() => { onCompare(); setTab("compare"); }} />
+      </div>
+    </div>
+  );
+}
+
+// The comparison, kept in the simple view: every saved plan's chance curve on one chart (and this
+// plan as a dashed line while it isn't saved), a short list (average, 9 in 10) with Open and Remove
+function SimpleCompare({ items, results, budget, setBudget, remove, load, theme, settings, current, children }) {
+  const T = useT();
+  const S = T.simple;
+  const chartRef = useRef(null);
+  const rows = items.map((it, i) => {
+    const res = results[it.id];
+    const r = res?.status === "ok" ? res.result : null;
+    const chance = r ? (budget < r.cdf.length ? r.cdf[budget] : 1 - r.tail) : null;
+    return { it, i, res, r, chance };
+  });
+  const ready = rows.filter((x) => x.r);
+  const means = [...ready.map((x) => x.r.mean), ...(current ? [current.mean] : [])];
+  const at = (r) => (budget < r.cdf.length ? r.cdf[budget] : 1 - r.tail);
+  const chances = [...ready.map((x) => at(x.r)), ...(current ? [at(current)] : [])];
+  const bestChance = budget > 0 && chances.length > 1 ? Math.max(...chances) : null;
+  const bestMean = means.length > 1 ? Math.min(...means) : null;
+  const chart = useMemo(() => {
+    if (!ready.length && !current) return null;
+    const C = themeColors();
+    let xMax = 10;
+    for (const r of [...ready.map((x) => x.r), ...(current ? [current] : [])]) {
+      let x = r.cdf.length - 1;
+      for (let t = 0; t < r.cdf.length; t++) if (r.cdf[t] >= 0.999) { x = t; break; }
+      xMax = Math.max(xMax, x);
+    }
+    const datasets = ready.map(({ it, r, i }) => ({
+      label: it.name, data: sample(r.cdf, xMax), borderColor: C.series[i % C.series.length],
+      backgroundColor: C.series[i % C.series.length], borderWidth: 2, pointRadius: 0, borderDash: i >= C.series.length ? [6, 4] : [],
+    }));
+    if (current) datasets.push({ label: S.cmpCurrent, data: sample(current.cdf, xMax), borderColor: C.marker, backgroundColor: C.marker, borderWidth: 2, pointRadius: 0, borderDash: [5, 4] });
+    return { C, xMax: Math.max(xMax, budget || 0), datasets };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [results, items, current, budget, theme, T]);
+
+  return (
+    <div className="s-compare">
+      <label className="s-inline s-cmp-at">
+        <span>{S.cmpMark}</span>
+        <NumberInput className="custom-input s-field s-pulls" min={0} value={budget} onChange={setBudget} aria-label={S.cmpMark} />
+      </label>
+      {chart && (
+        <div className="chart-container s-compare-chart">
+          <Line
+            ref={chartRef}
+            data={{ datasets: chart.datasets }}
+            options={{
+              responsive: true, maintainAspectRatio: false, animation: false, parsing: false, normalized: true,
+              interaction: { mode: "index", intersect: false },
+              scales: {
+                x: { type: "linear", min: 0, max: chart.xMax, title: { display: true, text: T.chart.xTitle, color: chart.C.tick }, ticks: { color: chart.C.tick, callback: (v) => fmtInt(v), maxTicksLimit: 8 }, grid: { color: chart.C.grid }, border: { color: chart.C.grid } },
+                y: { min: 0, max: 1, ticks: { color: chart.C.tick, callback: (v) => `${Math.round(v * 100)}%`, maxTicksLimit: 6 }, grid: { color: chart.C.grid }, border: { color: chart.C.grid } },
+              },
+              plugins: {
+                legend: { display: false },
+                tooltip: { callbacks: { title: (it) => T.chart.pull(fmtInt(it[0]?.parsed.x)), label: (c) => `${c.dataset.label}: ${fmtPct(c.parsed.y)}` } },
+                markers: { items: budget > 0 ? [{ x: budget, strong: true, color: chart.C.marker, bg: chart.C.inset, label: S.cmpLine(fmtInt(budget)) }] : [] },
+              },
+            }}
+          />
+        </div>
+      )}
+      {items.length === 1 && !current && <p className="s-hint">{S.compareOne}</p>}
+      <div className="s-cmp" role="table" aria-label={S.compareTitle}>
+        <div className="s-cmp-row s-cmp-head" role="row">
+          <span role="columnheader">{S.cmpPlan}</span>
+          <span role="columnheader" className="s-cmp-num">{S.cmpAverage}</span>
+          <span role="columnheader" className="s-cmp-num">{S.cmpNine}</span>
+          <span role="columnheader" className="s-cmp-num">{S.cmpChance(fmtInt(budget))}</span>
+          <span role="columnheader"><span className="sr-only">{T.compare.actions}</span></span>
+        </div>
+        {current && (
+          <div className="s-cmp-row is-current" role="row">
+            <span className="s-cmp-name" role="cell"><span className="swatch swatch--dashed" aria-hidden="true" /><span>{S.cmpCurrent}</span></span>
+            <span role="cell" className={`s-cmp-num ${current.mean === bestMean ? "is-best" : ""}`}><span className="s-cmp-label">{S.cmpAverage}</span>{fmtInt(current.mean)}</span>
+            <span role="cell" className="s-cmp-num"><span className="s-cmp-label">{S.cmpNine}</span>{current.percentiles?.p90 != null ? fmtInt(current.percentiles.p90) : "-"}</span>
+            <span role="cell" className={`s-cmp-num ${at(current) === bestChance ? "is-best" : ""}`}><span className="s-cmp-label">{S.cmpChance(fmtInt(budget))}</span>{fmtPct(at(current))}</span>
+            <span role="cell" className="s-cmp-actions s-cmp-note">{S.cmpNotAdded}</span>
+          </div>
+        )}
+        {rows.map(({ it, i, res, r }) => (
+          <div key={it.id} className="s-cmp-row" role="row">
+            <span className="s-cmp-name" role="cell">
+              <span className="swatch" style={{ "--c": `var(--s${(i % 6) + 1})` }} aria-hidden="true" />
+              <span title={it.name}>{it.name}</span>
+            </span>
+            {r ? (
+              <>
+                <span role="cell" className={`s-cmp-num ${r.mean === bestMean ? "is-best" : ""}`}><span className="s-cmp-label">{S.cmpAverage}</span>{fmtInt(r.mean)}</span>
+                <span role="cell" className="s-cmp-num"><span className="s-cmp-label">{S.cmpNine}</span>{r.percentiles.p90 != null ? fmtInt(r.percentiles.p90) : "-"}</span>
+                <span role="cell" className={`s-cmp-num ${at(r) === bestChance ? "is-best" : ""}`}><span className="s-cmp-label">{S.cmpChance(fmtInt(budget))}</span>{fmtPct(at(r))}</span>
+              </>
+            ) : (
+              <>
+                <span role="cell" className={`s-cmp-num ${res?.status === "error" ? "err-text" : "muted"}`}>{res?.status === "error" ? errorText(T, res) : T.compare.calculating}</span>
+                <span role="cell" />
+                <span role="cell" />
+              </>
+            )}
+            <span className="s-cmp-actions" role="cell">
+              <button type="button" className="btn btn--quiet btn--sm" onClick={() => load(it)}>{S.cmpOpen}</button>
+              <button type="button" className="s-remove" onClick={() => remove(it.id)} aria-label={T.compare.remove(it.name)} title={T.compare.remove(it.name)}><TrashIcon /></button>
+            </span>
+          </div>
+        ))}
+      </div>
+      <div className="s-actions">
+        {children}
+        <CompareExport rows={rows} ready={ready} budget={budget} chartRef={chartRef}
+          showBest={settings?.showBest !== false} showWorst={settings?.showWorst !== false} buttonClass="btn" up />
+      </div>
     </div>
   );
 }

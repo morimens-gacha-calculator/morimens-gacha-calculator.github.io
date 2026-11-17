@@ -1,39 +1,71 @@
-/* Light layout after the reference calculator: preset nav on top, one white content box,
-   setup card + pull plan side by side, then the question, chart, stats and tables. */
-/* The one theme: a lifted navy, not black. */
+/* ── Design system: Glacier ─────────────────────────────────────────────────────────────
+   Flat colour only: no gradients, glows or shadows. The slate greys come from the background art.
+   Roles: --action = you can press it · --gold = the answer · --data = chart lines.
+   One filled (primary) button per card. One font (Inter) for everything. */
 :root {
   color-scheme: dark;
-  --page: #232638;
-  --box: rgba(42, 45, 66, 0.86);
-  --ink: #eceef6;
-  --ink-2: #cfd2e2;
-  --muted: #a2a7bf;
-  --line: #454a66;
-  --field: #34384f;
-  --field-focus: #3c4160;
-  --surface: rgba(52, 56, 79, 0.75);
-  --nav-bg: rgba(42, 45, 66, 0.78);
-  --accent: #a99ff0;             /* lavender: tabs, help, decoration */
-  --accent-soft: rgba(169, 159, 240, 0.18);
-  --primary: #a99ff0;            /* main buttons and the active mode */
-  --primary-ink: #1d1b33;
-  --blue: #4aa8e8;               /* data: chart line, met bars */
-  --blue-soft: rgba(74, 168, 232, 0.18);
-  --bar-track: #3a3f58;
-  --bar-muted: #5a6182;
-  --ok: #6fdc95; --ok-bg: rgba(111, 220, 149, 0.14);
-  --err: #ff8f80; --err-bg: rgba(255, 143, 128, 0.14);
-  --pop-bg: #15172a;
-  --target-bg: rgba(52, 56, 79, 0.75);
-  --bg-fade: rgba(35, 38, 56, 0.35);
-  --chart-tick: #a2a7bf;
-  --chart-grid: rgba(255, 255, 255, 0.08);
-  --chart-fill: rgba(74, 168, 232, 0.20);
-  --chart-marker: #f1efff;
-  --chart-guide: #a2a7bf;
-  --s1: #4aa8e8; --s2: #f08a4b; --s3: #3cc79a; --s4: #b9a6ff; --s5: #f06ba0; --s6: #e8c547;
-  --radius: 14px;
-  --font: "Roboto", "Segoe UI", system-ui, sans-serif;
+  /* surfaces, darkest to lightest; fields sit below the card they're on */
+  --bg: #12181e;
+  --surface-1: rgba(22, 29, 36, 0.92);  /* the main box, over the background picture */
+  --surface-2: #1c242d;                 /* cards */
+  --surface-3: #26313b;                 /* tiles and raised bits inside cards */
+  --inset: #121920;                     /* inputs and chart wells */
+  --line: #2c3843;                      /* dividers, card edges */
+  --line-strong: #44535f;               /* field edges */
+  /* text: the pale light of the art */
+  --ink: #e8ebe7;
+  --ink-2: #c3cac8;
+  --muted: #8d9a9c;
+  /* roles */
+  --action: #8cc8e8;                    /* ice blue */
+  --action-ink: #0b1a24;
+  --action-text: var(--action);
+  --action-soft: color-mix(in srgb, var(--action) 15%, transparent);
+  --action-line: color-mix(in srgb, var(--action) 50%, transparent);
+  --gold: #e8b04f;                      /* the answer */
+  --data: #3987e5;
+  --data-soft: color-mix(in srgb, var(--data) 18%, transparent);
+  --ok: #4fd39b; --ok-bg: rgba(79, 211, 155, 0.14);
+  --warn: #f0a85a;
+  --err: #ff7a6e; --err-bg: rgba(255, 122, 110, 0.14);
+  /* comparison lines, validated for colour-blind separation on the cards */
+  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181; --s6: #0ca30c;
+  /* type */
+  --font: "Inter Variable", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+  /* shape and rhythm */
+  --r-sm: 6px; --r-md: 10px; --r-lg: 14px;
+  --h-md: 36px; --h-sm: 30px;
+  /* the two columns every view lines up on: inputs, then results */
+  --col-left: minmax(380px, 460px);
+  --col-gap: 20px;
+
+  /* older names used across the stylesheet, mapped onto the roles above */
+  --page: var(--bg);
+  --box: var(--surface-1);
+  --card: var(--surface-2);
+  --card-line: var(--line);
+  --surface: var(--surface-2);
+  --target-bg: var(--surface-2);
+  --nav-bg: var(--surface-1);
+  --field: var(--inset);
+  --field-focus: var(--inset);
+  --accent: var(--action);
+  --accent-soft: var(--action-soft);
+  --primary: var(--action);
+  --primary-ink: var(--action-ink);
+  --blue: var(--data);
+  --blue-soft: var(--data-soft);
+  --bar-track: var(--surface-3);
+  --bar-muted: #4a5864;
+  --pop-bg: #0f1419;
+  --bg-fade: rgba(18, 24, 30, 0.35);
+  --chart-tick: var(--muted);
+  --chart-grid: rgba(255, 255, 255, 0.07);
+  --chart-fill: color-mix(in srgb, var(--data) 20%, transparent);
+  --chart-marker: var(--ink);
+  --chart-guide: var(--muted);
+  --radius: var(--r-lg);
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; }
@@ -64,7 +96,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 /* ── Content box ── */
 .main { padding: 16px; }
 .content-box {
-  max-width: 1560px; margin: 0 auto; background: var(--box); border-radius: var(--radius); padding: 24px 26px; border: 1px solid var(--line); backdrop-filter: blur(10px);
+  max-width: 1560px; margin: 0 auto; background: var(--box); border-radius: var(--radius); padding: 24px 26px; border: 1px solid var(--line);
   display: grid; gap: 20px;
 }
 @media (max-width: 640px) { .content-box { padding: 18px 14px; } }
@@ -73,22 +105,30 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .subtitle { margin: 6px 0 0; color: var(--muted); max-width: 70ch; }
 
 /* ── Buttons & fields ── */
-.btn { border: 1px solid var(--line); background: var(--field); border-radius: 9px; padding: 8px 14px; cursor: pointer; font-weight: 500; }
-.btn:hover { border-color: var(--accent); }
+.btn {
+  border: 1px solid color-mix(in srgb, var(--accent) 42%, transparent); background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--ink); border-radius: 9px; padding: 8px 14px; cursor: pointer; font-weight: 500;
+}
+.btn:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 26%, transparent); border-color: var(--accent); }
 .btn:disabled { opacity: 0.5; cursor: default; }
-.btn--ghost { color: var(--ink-2); }
+.btn--primary { background: var(--primary); border-color: var(--primary); color: var(--primary-ink); font-weight: 600; }
+.btn--primary:hover:not(:disabled) { background: color-mix(in srgb, var(--primary) 85%, white); border-color: color-mix(in srgb, var(--primary) 85%, white); }
+.btn--primary:disabled { opacity: 1; background: transparent; color: var(--accent); }
+.btn--ghost { background: transparent; border-color: var(--line); color: var(--ink-2); }
 .btn--soft { background: var(--accent-soft); border-color: transparent; color: var(--ink); }
 .btn--small { padding: 4px 10px; font-size: 13px; border-radius: 7px; }
 .btn--danger:hover { color: var(--err); border-color: var(--err); }
 .btn--calculate { background: var(--primary); color: var(--primary-ink); border-color: var(--primary); padding: 10px 26px; font-weight: 700; margin-left: auto; }
 .btn--calculate:hover { filter: brightness(1.08); }
 .btn--add { width: 40px; height: 40px; border-radius: 50%; padding: 0; font-size: 22px; line-height: 1; background: var(--accent); color: var(--primary-ink); border-color: var(--accent); }
-.btn--delete { width: 34px; height: 34px; padding: 0; border-radius: 50%; font-size: 18px; color: var(--muted); align-self: end; }
-.btn--delete:hover:not(:disabled) { color: var(--err); border-color: var(--err); }
+.btn--delete { width: 34px; height: 34px; padding: 0; border-radius: 8px; color: var(--muted); align-self: end; display: grid; place-items: center; background: transparent; border-color: transparent; }
+.btn--delete:hover:not(:disabled) { color: var(--err); border-color: transparent; background: var(--err-bg); }
+.btn--danger { display: inline-grid; place-items: center; }
+.btn--danger:hover:not(:disabled) { background: var(--err-bg); }
 .custom-input, .select, .json-area {
   background: var(--field); border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; min-width: 0; width: 100%;
 }
-.custom-input:focus, .select:focus { border-color: var(--accent); background: var(--field-focus); outline: none; }
+.custom-input:focus, .select:focus { border-color: var(--accent); background-color: var(--field-focus); outline: none; }
 .select.is-invalid { border-color: var(--err); }
 .w-xs { width: 72px; } .w-s { width: 90px; } .w-m { width: 130px; }
 .field { display: grid; gap: 4px; min-width: 0; }
@@ -188,7 +228,7 @@ td.num .custom-input { width: 84px; margin-left: auto; display: block; }
 .error-box { margin: 0; padding: 10px 14px; border-radius: 9px; background: var(--err-bg); color: var(--err); font-weight: 500; }
 
 /* ── Chart ── */
-.chart-wrapper { display: grid; gap: 10px; }
+.chart-wrapper { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; min-width: 0; }
 .chart-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
 .chip-tab { border: 1px solid var(--line); background: var(--field); border-radius: 999px; padding: 5px 14px; cursor: pointer; font-size: 13.5px; color: var(--ink-2); }
 .chip-tab.is-active { background: var(--blue-soft); border-color: var(--blue); color: var(--ink); font-weight: 500; }
@@ -224,7 +264,7 @@ tr.is-met .progress-bar { background: var(--blue); }
 
 
 /* ── Workspace: inputs left, results right ── */
-.workspace { display: grid; grid-template-columns: minmax(380px, 500px) minmax(0, 1fr); gap: 24px; align-items: start; }
+.workspace { display: grid; grid-template-columns: var(--col-left) minmax(0, 1fr); gap: var(--col-gap); align-items: start; }
 @media (max-width: 1100px) { .workspace { grid-template-columns: minmax(0, 1fr); } }
 .inputs-col, .results-col { display: grid; gap: 18px; min-width: 0; align-content: start; }
 .inputs-col .calculator-grid { grid-template-columns: 1fr 1fr; }
@@ -519,11 +559,15 @@ input[type="number"]::-webkit-outer-spin-button, input[type="number"]::-webkit-i
 
 /* Banner picker on the same columns as the workspace below: banner list and buttons over the
    inputs, the hint or notice over the results */
-.banner-picker { display: grid; grid-template-columns: minmax(380px, 500px) minmax(0, 1fr); gap: 8px 24px; align-items: end; }
+.banner-picker { display: grid; grid-template-columns: var(--col-left) minmax(0, 1fr); gap: 8px var(--col-gap); align-items: end; }
 .banner-picker .picker-row { flex: none; width: 100%; }
 .banner-picker .subtitle { margin: 0 0 8px; max-width: 80ch; }
 .banner-picker .notice { justify-self: start; margin-bottom: 6px; }
 @media (max-width: 1100px) {
+  .is-full .banner-picker { grid-template-columns: minmax(0, 1fr); }
+  .is-full .banner-picker .subtitle { margin: 0; }
+}
+@media (max-width: 900px) {
   .banner-picker { grid-template-columns: minmax(0, 1fr); }
   .banner-picker .subtitle { margin: 0; }
 }
@@ -534,7 +578,7 @@ input[type="number"]::-webkit-outer-spin-button, input[type="number"]::-webkit-i
 .picker-row .picker-select, .picker-row .btn--reset { height: 44px; box-sizing: border-box; padding-top: 0; padding-bottom: 0; }
 .banner-picker .notice { align-self: end; margin-bottom: 0; min-height: 44px; box-sizing: border-box; padding-top: 4px; padding-bottom: 4px; }
 /* the hint beside them too: centred on the buttons (taller hints grow upwards) */
-.banner-picker > .subtitle { margin: 0; min-height: 44px; display: flex; align-items: center; }
+.banner-picker > .subtitle { margin: 0; min-height: 44px; display: flex; align-items: center; font-size: 14px; line-height: 1.45; color: var(--muted); }
 
 /* Settings: shared by every banner, so set apart from the banner's own tabs */
 .tab-link--global { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; }
@@ -551,62 +595,106 @@ input[type="number"]::-webkit-outer-spin-button, input[type="number"]::-webkit-i
 .view-switch button.is-on { background: var(--primary); color: var(--primary-ink); }
 .view-switch button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
-/* the plan on the left, the answer on the right; one column on narrow screens, answer first */
-.simple-layout { display: grid; grid-template-columns: minmax(300px, 420px) minmax(0, 1fr); gap: 16px; align-items: start; margin-top: 4px; }
-.s-card { background: var(--target-bg); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+/* the plan on the left, the answer (and the comparison) on the right, on the banner row's
+   columns; one column on narrow screens, answer first */
+.simple-layout { display: grid; grid-template-columns: var(--col-left) minmax(0, 1fr); gap: var(--col-gap); align-items: start; }
+.s-side { display: grid; gap: var(--col-gap); min-width: 0; }
+.s-card { background: var(--card); border: 1px solid var(--card-line); border-radius: 14px; padding: 18px 20px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 @media (max-width: 900px) {
   .simple-layout { grid-template-columns: minmax(0, 1fr); }
-  .s-answer { order: -1; }
+  .s-side { order: -1; }
 }
+@media (max-width: 640px) { .s-card { padding: 14px; } }
 
-/* compact fields */
-.s-field { height: 30px; box-sizing: border-box; padding: 0 8px; font-size: 14px; border-radius: 7px; }
+/* compact fields, darker than the card */
+.s-field { height: 32px; box-sizing: border-box; padding: 0 9px; font-size: 14px; border-radius: 8px; }
 .s-num { width: 64px; }
 .s-pulls { width: 84px; }
 .s-what { flex: 1 1 150px; min-width: 0; width: auto; }
-.s-lead { margin: 0; font-size: 16px; font-weight: 500; }
-.s-goals { display: flex; flex-direction: column; gap: 8px; }
+.s-lead, .s-title { margin: 0; font-size: 15px; font-weight: 600; color: var(--ink); display: flex; align-items: center; gap: 8px; }
+.s-goals { display: flex; flex-direction: column; gap: 10px; }
 .s-goal { display: flex; flex-direction: column; gap: 6px; }
 .s-goal-fields { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .s-inline { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; color: var(--ink-2); }
+.s-times { color: var(--muted); font-size: 13px; }
 .s-have { padding-left: 2px; }
-.s-remove { width: 30px; height: 30px; border: 0; border-radius: 7px; background: transparent; color: var(--muted); font-size: 18px; cursor: pointer; }
-.s-remove:hover, .s-remove:focus-visible { background: var(--field); color: var(--ink); }
+/* remove: a bin icon, red on hover */
+.s-remove { width: 32px; height: 32px; display: inline-grid; place-items: center; border: 0; border-radius: 8px; background: transparent; color: var(--muted); cursor: pointer; flex: none; }
+.s-remove:hover, .s-remove:focus-visible { background: var(--err-bg); color: var(--err); }
 .s-join { display: inline-flex; align-self: flex-start; padding: 2px; border-radius: 8px; background: var(--field); border: 1px solid var(--line); }
-.s-join button { height: 22px; padding: 0 9px; border: 0; border-radius: 6px; background: transparent; color: var(--ink-2); font: 500 12.5px var(--font); cursor: pointer; }
-.s-join button.is-on { background: var(--accent-soft); color: var(--ink); }
+.s-join button { height: 24px; padding: 0 10px; border: 0; border-radius: 6px; background: transparent; color: var(--ink-2); font: 500 12.5px var(--font); cursor: pointer; }
+.s-join button.is-on { background: var(--accent); color: var(--primary-ink); }
 .s-join-word { font-size: 13px; color: var(--muted); }
-.s-add { align-self: flex-start; }
-.s-divider { height: 1px; background: var(--line); margin: 2px 0; }
-.s-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 14px; }
-.s-row > span:first-child { min-width: 0; }
+.s-add { align-self: flex-start; font-weight: 500; text-decoration: none; }
+.s-add:hover { text-decoration: underline; }
+.s-divider { height: 1px; background: var(--card-line); margin: 4px 0; }
+.s-row { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+.s-row-label { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
 .s-row .select.s-field { width: auto; max-width: 100%; }
-.s-hint { margin: 0; font-size: 12.5px; color: var(--muted); line-height: 1.4; }
-.s-row .s-hint { flex-basis: 100%; }
-.s-more { align-self: flex-start; height: 30px; padding: 0 12px; font-size: 13.5px; }
+.s-hint { margin: 0; font-size: 13px; color: var(--muted); line-height: 1.4; }
+.s-more { align-self: flex-start; height: 32px; padding: 0 12px; font-size: 13.5px; }
 
-/* the answer */
-.s-answer { gap: 8px; }
+/* the answer: two big numbers, then small tiles */
+.s-answer { gap: 12px; }
 .s-answer.is-updating .s-big, .s-answer.is-updating .s-second, .s-answer.is-updating .s-sure, .s-answer.is-updating .s-stats { opacity: 0.6; }
 .s-context { margin: 0; font-size: 13px; color: var(--muted); }
-.s-big { margin: 0; font-size: 22px; font-weight: 600; line-height: 1.25; }
-.s-big .s-hl { font-size: 34px; font-weight: 700; letter-spacing: -0.01em; }
-.s-second { margin: 0; font-size: 16px; line-height: 1.35; }
+@media (min-width: 901px) { .s-context { display: none; } } /* the plan is right beside it */
+.s-big { margin: 0; font-size: 22px; font-weight: 600; line-height: 1.2; letter-spacing: -0.01em; }
+.s-big .s-hl { font-size: 36px; font-weight: 700; letter-spacing: -0.02em; }
+.s-second { margin: 0; font-size: 16px; line-height: 1.35; color: var(--ink-2); }
 .s-second .s-hl { font-size: 22px; }
 .s-hl { color: var(--accent); font-weight: 700; font-variant-numeric: tabular-nums; }
-.s-sure { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 15px; }
+.s-sure { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 15px; color: var(--ink-2); }
 .s-sure .s-hl { font-size: 17px; }
-/* the other numbers: small tiles, a label over a value */
-.s-stats { margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 6px; }
-.s-stat { padding: 6px 10px; border-radius: 8px; background: var(--field); border: 1px solid var(--line); display: flex; flex-direction: column; justify-content: space-between; }
-.s-stat dt { font-size: 12px; color: var(--muted); line-height: 1.3; }
-.s-stat dd { margin: 2px 0 0; font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .s-sure .s-num { width: 58px; }
+.s-stats { margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
+.s-stat { padding: 8px 12px; border-radius: 10px; background: rgba(255, 255, 255, 0.04); display: flex; flex-direction: column; justify-content: space-between; }
+.s-stat dt { font-size: 12.5px; color: var(--muted); line-height: 1.3; }
+.s-stat dd { margin: 3px 0 0; font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .s-actions { display: flex; flex-wrap: wrap; gap: 8px; }
-.s-actions .btn { height: 32px; padding: 0 12px; font-size: 13.5px; }
-.chart-wrapper.is-simple .s-actions { margin-top: 10px; }
+.s-actions .btn { height: 34px; padding: 0 14px; font-size: 14px; }
+.chart-wrapper.is-simple .s-actions { margin-top: 12px; }
+.chart-wrapper.is-simple .chart-container { border-color: var(--card-line); background: rgba(0, 0, 0, 0.08); }
 .lines-pop.is-up { top: auto; bottom: calc(100% + 4px); }
-.chart-wrapper.is-simple { margin-top: 2px; }
+
+/* segmented switch: one choice of a few, the chosen one filled */
+.seg { display: inline-flex; align-self: flex-start; padding: 3px; gap: 2px; border-radius: 10px; background: var(--field); border: 1px solid var(--line); }
+.seg button { height: 28px; padding: 0 12px; border: 0; border-radius: 7px; background: transparent; color: var(--ink-2); font: 500 13.5px var(--font); cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+.seg button:hover:not(.is-on) { color: var(--ink); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.seg button.is-on { background: var(--accent); color: var(--primary-ink); }
+.seg button.is-on .count { background: rgba(0, 0, 0, 0.18); color: inherit; }
+
+/* the comparison, in the simple view */
+.s-compare { display: grid; gap: 10px; min-width: 0; }
+.s-actions .compare-export { margin-left: 0; }
+.swatch--dashed { background: none; border: 2px dashed var(--chart-marker); width: 12px; height: 12px; box-sizing: border-box; }
+.s-cmp-note { color: var(--muted); font-size: 12.5px; font-weight: 400; }
+.s-compare-chart { height: 220px; border-color: var(--card-line); background: rgba(0, 0, 0, 0.08); }
+@media (max-width: 640px) { .s-compare-chart { height: 200px; } }
+/* the list: name, average, 9 in 10, actions; on phones the name gets its own line */
+.s-cmp { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto auto; align-items: stretch; font-size: 14px; }
+.s-cmp-row { display: contents; }
+/* spacing as padding, not a column gap, so the row lines run unbroken */
+.s-cmp-row > * { padding: 7px 0 7px 16px; border-top: 1px solid var(--card-line); display: flex; align-items: center; }
+.s-cmp-row > :first-child { padding-left: 0; }
+.s-cmp-head > * { border-top: 0; padding-top: 0; padding-bottom: 4px; font-size: 12.5px; color: var(--muted); white-space: nowrap; }
+.s-cmp-name { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.s-cmp-name > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.s-cmp-num { justify-content: flex-end; font-weight: 600; white-space: nowrap; }
+.s-cmp-num.is-best { color: var(--accent); }
+.s-cmp-label { display: none; }
+.s-cmp-actions { display: flex; align-items: center; justify-content: flex-end; gap: 4px; }
+@media (max-width: 640px) {
+  .s-cmp { grid-template-columns: auto auto auto minmax(0, 1fr); }
+  .s-cmp-row > * { padding-left: 14px; }
+  .s-cmp-row > :first-child, .s-cmp-row > :nth-child(2) { padding-left: 0; }
+  .s-cmp-head { display: none; }
+  .s-cmp-name { grid-column: 1 / -1; padding-bottom: 0; }
+  .s-cmp-name > span:last-child { white-space: normal; }
+  .s-cmp-num { border-top: 0; justify-content: flex-start; padding-top: 2px; }
+  .s-cmp-label { display: inline; font-weight: 400; font-size: 12.5px; color: var(--muted); margin-right: 5px; }
+  .s-cmp-actions { border-top: 0; padding-top: 2px; }
+}
 
 /* first visit: questions to try */
 .s-examples { display: flex; flex-direction: column; gap: 6px; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
@@ -618,3 +706,148 @@ input[type="number"]::-webkit-outer-spin-button, input[type="number"]::-webkit-i
 /* technical terms explain themselves on hover or focus */
 .term { text-decoration: underline dotted; text-underline-offset: 3px; cursor: help; }
 .s-context::first-letter { text-transform: uppercase; }
+
+/* ══ Design system components (Glacier) ═══════════════════════════════════════════════════
+   One look for every control, in one place. These come last on purpose, so they decide over the
+   older per-feature rules above. Levels of buttons:
+     .btn--primary   filled: the next step (one per card)
+     .btn--secondary tinted: other actions (plain .btn looks the same)
+     .btn--quiet     text only: small, frequent actions inside a card
+     icon buttons    bin (red on hover), close, "?"                                       */
+
+/* ── Type ── */
+.main-title { font: 700 30px/1.1 var(--font); letter-spacing: -0.02em; }
+h2, .s-lead { font-family: var(--font); font-size: 20px; font-weight: 700; letter-spacing: -0.01em; line-height: 1.2; }
+.json-area { font-family: var(--font-mono); }
+.picker-field .field-label { font-size: 11px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+@media (max-width: 640px) { .main-title { font-size: 24px; } h2, .s-lead { font-size: 18px; } }
+
+/* ── Buttons ── */
+.btn, .btn--secondary, .btn--soft, .btn--ghost {
+  background: var(--action-soft); border: 1px solid var(--action-line); color: var(--ink);
+  border-radius: var(--r-sm); font-weight: 600; filter: none;
+}
+.btn:hover:not(:disabled) { background: color-mix(in srgb, var(--action) 28%, transparent); border-color: var(--action); }
+.btn--primary, .btn--calculate { background: var(--action); border-color: var(--action); color: var(--action-ink); font-weight: 700; }
+.btn--primary:hover:not(:disabled), .btn--calculate:hover:not(:disabled) { background: color-mix(in srgb, var(--action) 85%, var(--ink)); border-color: color-mix(in srgb, var(--action) 85%, var(--ink)); filter: none; }
+.btn--primary:disabled, .btn--calculate:disabled { opacity: 1; background: transparent; color: var(--action-text); border-color: var(--action-line); }
+.btn--quiet, .btn--link { background: transparent; border-color: transparent; color: var(--action-text); text-decoration: none; padding: 0 8px; font-weight: 600; }
+.btn--quiet:hover:not(:disabled), .btn--link:hover:not(:disabled) { background: var(--action-soft); border-color: transparent; }
+.btn--link { padding: 0 2px; border-radius: 4px; }
+.btn--sm { height: var(--h-sm); padding: 0 12px; font-size: 13px; }
+.btn--quiet.btn--sm { padding: 0 8px; }
+.add-row-btn { border: 1px dashed var(--line-strong); color: var(--action-text); font-weight: 600; border-radius: var(--r-md); }
+.add-row-btn:hover { border-color: var(--action); background: var(--action-soft); color: var(--action-text); }
+/* icon buttons: the bin turns red on hover */
+.s-remove, .btn--delete, .btn--danger { background: transparent; border-color: transparent; color: var(--muted); border-radius: var(--r-sm); }
+.s-remove:hover, .s-remove:focus-visible, .btn--delete:hover:not(:disabled), .btn--danger:hover:not(:disabled) { background: var(--err-bg); color: var(--err); border-color: transparent; }
+.help-btn { border-color: var(--action-line); color: var(--action-text); }
+.help-btn:hover, .help-btn[aria-expanded="true"] { background: var(--action); color: var(--action-ink); border-color: var(--action); }
+
+/* ── Segmented switches: one choice of a few, the chosen one filled ── */
+.seg, .view-switch, .s-join, .mode-toggle { background: var(--inset); border: 1px solid var(--line); border-radius: var(--r-md); padding: 3px; gap: 2px; }
+.seg button, .view-switch button, .s-join button, .mode-tab { border-radius: 7px; color: var(--ink-2); font-weight: 600; }
+.seg button:hover:not(.is-on), .view-switch button:hover:not(.is-on), .s-join button:hover:not(.is-on), .mode-tab:hover:not(.is-active) { background: var(--action-soft); color: var(--ink); }
+.seg button.is-on, .view-switch button.is-on, .s-join button.is-on, .mode-tab.is-active { background: var(--action); color: var(--action-ink); }
+.chip-tab { background: var(--inset); border: 1px solid var(--line); color: var(--ink-2); border-radius: var(--r-sm); font-weight: 600; }
+.chip-tab:hover:not(:disabled):not(.is-active) { background: var(--action-soft); color: var(--ink); }
+.chip-tab.is-active { background: var(--action); border-color: var(--action); color: var(--action-ink); }
+.view-tab.is-active, .tab-link.active { border-bottom-color: var(--action); }
+.count { background: var(--action-soft); color: var(--ink); }
+.seg button.is-on .count, .chip-tab.is-active .count { background: rgba(0, 0, 0, 0.2); color: inherit; }
+
+/* ── Fields: darker than the card they sit on ── */
+.custom-input, .select, .json-area, .affix-box { background-color: var(--inset); border-color: var(--line-strong); }
+.custom-input:hover, .select:hover { border-color: color-mix(in srgb, var(--action) 40%, var(--line-strong)); }
+.custom-input:focus, .select:focus, .affix-box:focus-within { background-color: var(--inset); border-color: var(--action); outline: 1px solid var(--action); outline-offset: 0; }
+/* a dropdown keeps focus after you pick (so the keyboard can carry on), but it only looks
+   highlighted while the keyboard is in use (main.jsx sets data-input on <html>) */
+html[data-input="mouse"] .select:focus { border-color: var(--line-strong); outline: none; }
+.select {
+  appearance: none; -webkit-appearance: none; padding-right: 28px; cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%238d9a9c' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 10px center;
+}
+.select.is-invalid { border-color: var(--err); }
+
+/* ── Surfaces: box › card › tile; chart wells are inset ── */
+.s-card, .tab-panel-card, .target-section { background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--r-md); }
+.chart-container, .chart-wrapper.is-simple .chart-container, .s-compare-chart { background: var(--inset); border-color: var(--line); }
+.result-card, .answer-box, .stat, .s-stat { background: var(--surface-3); border-color: transparent; }
+.lines-pop, .help-pop, .notice { box-shadow: none; }
+
+/* ── The answer colour: the chance and the average, nowhere else ── */
+.answer-value { font-family: var(--font); font-weight: 600; font-size: 30px; letter-spacing: -0.02em; color: var(--gold); font-variant-numeric: proportional-nums; }
+.s-hl { color: var(--gold); font-weight: 700; }
+.s-big { font: 600 18px/1.3 var(--font); display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; letter-spacing: 0; }
+.s-big .s-hl { font: 600 52px/1 var(--font); letter-spacing: -0.02em; font-variant-numeric: proportional-nums; }
+.s-second { font: 500 18px/1.35 var(--font); color: var(--ink-2); }
+.s-second .s-hl { font-size: 22px; }
+.s-sure .s-hl { font-size: 18px; }
+.s-cmp-num.is-best { color: var(--gold); }
+@media (max-width: 640px) { .s-big .s-hl { font-size: 42px; } }
+
+/* ── Tiles: the number on top, its label under it, so numbers line up across a row ── */
+.s-stat { flex-direction: column-reverse; justify-content: flex-end; gap: 2px; padding: 10px 12px; border-radius: var(--r-md); }
+.s-stat dd { margin: 0; font-size: 20px; font-weight: 700; line-height: 1.15; }
+.s-stat dt { font-size: 12.5px; font-weight: 500; }
+
+/* ── "I want": the rows and their headings share one set of columns (subgrid), so "How many"
+   stays over the numbers whatever each row holds: what | × how many (each) | remove ── */
+.s-goals { display: grid; grid-template-columns: minmax(0, 1fr) auto 32px; column-gap: 6px; row-gap: 8px; }
+.s-goal-head, .s-goal, .s-goal-fields { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; align-items: center; }
+.s-goal { row-gap: 6px; }
+.s-goal > .s-join, .s-goal > .s-join-word, .s-goal > .s-have { grid-column: 1 / -1; justify-self: start; }
+.s-goal-head { margin-bottom: -4px; font-size: 12.5px; font-weight: 500; color: var(--muted); }
+.s-goal-head span:nth-child(2) { padding-left: 18px; } /* over the number, past the "×" */
+.s-what-cell { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
+.s-what-cell .s-what { flex: 1 1 150px; }
+.s-copies { white-space: nowrap; }
+.s-field { height: 32px; }
+/* the comparison panel shrinks with the card (its chart canvas must not hold it wide) */
+.s-compare { grid-template-columns: minmax(0, 1fr); }
+/* the item picker is a button styled as a .select: the select's arrow is enough */
+.picker-btn::after { content: none; }
+/* the banner label with its "?" (the banner's description) */
+.picker-label-row { display: inline-flex; align-items: center; gap: 8px; }
+.picker-label-row .help-btn { width: 18px; height: 18px; font-size: 11px; }
+/* "I want": "What" on the left, "How many" on the right edge of its column */
+.s-goal-head span:nth-child(2) { padding-left: 0; justify-self: end; }
+.s-copies { justify-self: end; }
+/* "from [All 19 ▾]" and "I already have" under a goal */
+.s-from, .s-have { grid-column: 1 / -1; justify-self: start; }
+.s-from .item-picker, .s-have .item-picker { min-width: 0; }
+.s-from .picker-btn, .s-have .picker-btn { height: 30px; min-width: 150px; font-size: 13.5px; }
+.s-cmp-at { justify-self: start; }
+.s-owned-note { color: var(--muted); font-size: 13px; }
+.row-hint { flex-basis: 100%; margin: 0; font-size: 12.5px; color: var(--muted); }
+/* "I want", final columns: what | × | how many | each | remove (shared by every row via subgrid) */
+.s-goals { grid-template-columns: minmax(0, 1fr) auto 64px auto 32px; }
+.s-what-cell { grid-column: 1; }
+.s-goal-fields > .s-times { grid-column: 2; justify-self: center; }
+.s-goal-fields > .s-copies-num { grid-column: 3; width: 64px; }
+.s-goal-fields > .s-each { grid-column: 4; font-size: 14px; color: var(--ink-2); }
+.s-goal-fields > .s-remove { grid-column: 5; }
+.s-goal-head span:nth-child(1) { grid-column: 1; }
+.s-goal-head span:nth-child(2) { grid-column: 3; justify-self: end; white-space: nowrap; }
+/* and / or between goals: centred */
+.s-goal > .s-join, .s-goal > .s-join-word { justify-self: center; }
+.paths .field-label { white-space: nowrap; }
+/* full view on phones: the "From" picker gets its own line, so it never pushes past the card */
+@media (max-width: 640px) { .plan-row > .field:has(> .item-picker) { grid-column: 1 / -1; } }
+/* a long question: question, answer, "?" (like the other rows) */
+.s-row--stack { flex-wrap: nowrap; } /* one row: when space runs out the question text wraps, the answer stays beside it */
+.s-q { flex: 0 1 auto; min-width: 0; }
+.s-row--stack > :not(.s-q) { flex: none; }
+.s-row--stack .select.s-field { min-width: 160px; }
+.s-row--stack .seg { flex: none; }
+.seg--sm button { height: 24px; padding: 0 12px; font-size: 13px; }
+/* "+ Add another goal": centred like the and/or switch, close to the goals above it */
+.s-add { align-self: center; margin: -4px 0 -2px; }
+/* big numbers sit close to their words, like a normal word space */
+.s-big { column-gap: 6px; }
+/* the full view's answer: the unit ("pulls") on the number's baseline, the pair centred in the box */
+.answer-box { align-items: baseline; flex-wrap: wrap; align-content: center; }
+/* standalone numbers use natural digit widths (fixed-width digits spread out "1,1"); tables keep
+   fixed-width digits so their columns line up */
+.stat-value, .s-stat dd, .result-value { font-variant-numeric: proportional-nums; }

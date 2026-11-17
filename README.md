@@ -96,3 +96,17 @@ The simple view and the full view each have their own background, set in `BACKGR
    `"rgba(35, 38, 56, 0.5)"`; `null` uses the default `--bg-fade` in `src/styles.css`.
 
 `scripts/make_bg.py` regenerates the default starfield image if you want to tweak it.
+
+## Design
+
+The look is set by colour tokens at the top of `src/styles.css` (the "Glacier" palette) and by
+one block of shared component styles at the end of the same file. A few rules keep it consistent:
+
+- Flat colour only: no gradients, glows or shadows.
+- `--action` (ice blue) is only for things you can press; `--gold` is only for the answer (the
+  chance, the average and the average line on the chart); `--data` and `--s1`…`--s6` are only for
+  chart lines.
+- Buttons come in four levels: `.btn--primary` (filled, one per card), `.btn--secondary`,
+  `.btn--quiet` (text only) and icon buttons. One-of-a-few choices use the segmented switch.
+- Fonts are served by the site itself (`src/main.jsx`): Inter for everything, JetBrains Mono for the
+  banner data editor.

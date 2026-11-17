@@ -6,7 +6,6 @@ import { shareCard } from "./export.js";
 import { useCompare } from "./useCompare.js";
 import { I18nContext, LOCALES, browserLocale, setLocale, withWording } from "./i18n/index.js";
 import { BACKGROUNDS, DEFAULT_PRESET, SITE_NAME, BANNERS_PATCH, SOURCE_URL } from "./site.config.js";
-import { HelpContext } from "./components/Help.jsx";
 import BannerPicker from "./components/BannerPicker.jsx";
 import SetupCard from "./components/SetupCard.jsx";
 import PullPlan from "./components/PullPlan.jsx";
@@ -93,7 +92,6 @@ export default function App() {
   const [linkError, setLinkError] = useState(false);
   const [compare, setCompare] = useState(() => load(COMPARE_KEY, (c) => c && Array.isArray(c.items)) ?? { items: [], budget: 600 });
   const theme = "dark"; // the one theme (charts read their colours from it)
-  const [showHelp, setShowHelp] = useState(true);
   const [runToken, setRunToken] = useState(0);
   const [view, setView] = useState("single");
   const [detail, setDetail] = useState("dist");
@@ -169,6 +167,12 @@ export default function App() {
     setState((s) => ({ ...freshState(key), mode: s.mode, desired: s.desired, chartLines: s.chartLines ?? freshState(key).chartLines }));
   };
 
+  // the plan on screen is in the comparison already (same banner, plan and pity)
+  // (settings are shared by all setups, so they don't count)
+  const planKey = (snap) => JSON.stringify({ ...snap, settings: undefined });
+  const currentKey = planKey(snapshotOf(state));
+  const isSaved = compare.items.some((it) => planKey(it.snapshot) === currentKey);
+
   const compareApi = {
     items: compare.items,
     results: compareResults,
@@ -181,12 +185,11 @@ export default function App() {
 
   return (
     <I18nContext.Provider value={T}>
-      <HelpContext.Provider value={showHelp}>
         {backgroundStyle(simpleView ? "simple" : "full") && (
           <div key={simpleView ? "simple" : "full"} className="background-container" style={backgroundStyle(simpleView ? "simple" : "full")} aria-hidden="true" />
         )}
         <main className="main">
-          <section className="content-box" aria-label={T.app.title}>
+          <section className={`content-box ${simpleView ? "is-simple" : "is-full"}`} aria-label={T.app.title}>
             <div className="header-row">
               <h1 className="main-title">{T.app.title}</h1>
               <div className="row header-buttons">
@@ -202,7 +205,6 @@ export default function App() {
                   <button type="button" aria-pressed={simpleView} className={simpleView ? "is-on" : ""} onClick={() => setViewMode("simple")}>{T.app.viewSimple}</button>
                   <button type="button" aria-pressed={!simpleView} className={!simpleView ? "is-on" : ""} onClick={() => setViewMode("full")}>{T.app.viewFull}</button>
                 </div>
-                <button type="button" className="btn btn--ghost" onClick={() => setShowHelp((v) => !v)}>{showHelp ? T.app.hideHelp : T.app.showHelp}</button>
               </div>
             </div>
 
@@ -223,7 +225,7 @@ export default function App() {
             {simpleView ? (
               <SimpleView state={state} update={update} engine={engine} theme={theme}
                 firstVisit={firstVisit} onExampleDone={() => setFirstVisit(false)}
-                onCompare={() => { addToCompare(); setViewMode("full"); setView("compare"); }}
+                onCompare={addToCompare} compare={compareApi} isSaved={isSaved}
                 onDetails={() => { setViewMode("full"); setView("single"); }} />
             ) : (
             <div className="workspace">
@@ -270,7 +272,6 @@ export default function App() {
             <a className="footer-link" href={SOURCE_URL} target="_blank" rel="noopener noreferrer">{T.footer.source}</a>
           )}
         </footer>
-      </HelpContext.Provider>
     </I18nContext.Provider>
   );
 }

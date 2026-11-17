@@ -2,6 +2,7 @@ import { useMemo, useRef } from "react";
 import { Line } from "react-chartjs-2";
 import { HelpButton } from "./Help.jsx";
 import NumberInput from "./NumberInput.jsx";
+import { TrashIcon } from "./Icon.jsx";
 import { fmtInt, fmtNum, fmtPct } from "../model.js";
 import { themeColors, sample, usePopup } from "./ResultChart.jsx";
 import { downloadChartPng, downloadCsv, fileName } from "../export.js";
@@ -129,7 +130,7 @@ export default function ComparePanel({ items, results, budget, setBudget, rename
                 )}
                 <td className="actions">
                   <button type="button" className="btn btn--small" onClick={() => load(it)}>{L.load}</button>
-                  <button type="button" className="btn btn--small btn--danger" onClick={() => remove(it.id)} aria-label={L.remove(it.name)}>×</button>
+                  <button type="button" className="btn btn--small btn--danger" onClick={() => remove(it.id)} aria-label={L.remove(it.name)}><TrashIcon size={15} /></button>
                 </td>
               </tr>
             ))}
@@ -141,7 +142,7 @@ export default function ComparePanel({ items, results, budget, setBudget, rename
 }
 
 // "Export ▾" for the comparison: the table and the chance curves as CSV, the chart as PNG
-function CompareExport({ rows, ready, budget, chartRef, showBest, showWorst }) {
+export function CompareExport({ rows, ready, budget, chartRef, showBest, showWorst, buttonClass = "chip-tab", up = false }) {
   const T = useT();
   const L = T.compare;
   const { open, setOpen, ref } = usePopup();
@@ -165,9 +166,9 @@ function CompareExport({ rows, ready, budget, chartRef, showBest, showWorst }) {
   };
   return (
     <div className="lines-menu compare-export" ref={ref}>
-      <button type="button" className="chip-tab" aria-expanded={open} disabled={!ready.length} onClick={() => setOpen((o) => !o)}>{T.chart.export} ▾</button>
+      <button type="button" className={buttonClass} aria-expanded={open} disabled={!ready.length} onClick={() => setOpen((o) => !o)}>{T.chart.export} ▾</button>
       {open && ready.length > 0 && (
-        <div className="lines-pop" role="menu" aria-label={T.chart.export}>
+        <div className={`lines-pop ${up ? "is-up" : ""}`} role="menu" aria-label={T.chart.export}>
           <button type="button" role="menuitem" className="menu-item" onClick={() => run(() => downloadCsv(fileName(L.fileTable) + ".csv", table()))}>{L.exportTable}</button>
           <button type="button" role="menuitem" className="menu-item" onClick={() => run(() => downloadCsv(fileName(L.fileByPull) + ".csv", byPull()))}>{L.exportByPull}</button>
           <button type="button" role="menuitem" className="menu-item" disabled={!chartRef.current}

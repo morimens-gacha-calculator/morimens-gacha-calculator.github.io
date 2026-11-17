@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { presets } from "../model.js";
 import { useT } from "../i18n/index.js";
+import { HelpButton } from "./Help.jsx";
 
 // Banner dropdown with Reset and Share. Reset (and opening a shared link) can be undone right
 // after, instead of asking first. Share gives a one-line summary and a link to this setup.
@@ -30,7 +31,7 @@ export default function BannerPicker({ current, onPick, hint, onReset, canUndo, 
     }
   };
   // One line beside the buttons: a notice (copied, shared setup opened, reset, broken link) with
-  // its action, or the banner's hint
+  // its action. The banner's description sits behind the "?" next to its label.
   let line;
   if (shareMsg?.kind === "copied") line = <Notice tone="ok" icon="✓" text={T.app.linkCopied} />;
   else if (shareMsg?.kind === "manual") line = (
@@ -43,19 +44,22 @@ export default function BannerPicker({ current, onPick, hint, onReset, canUndo, 
       action={T.app.undo} onAction={onUndo} onClose={onDismissUndo} closeLabel={T.app.close} />
   );
   else if (linkError) line = <Notice tone="err" icon="!" text={T.app.linkBroken} onClose={onDismissError} closeLabel={T.app.close} />;
-  else line = <p className="subtitle">{hint}</p>;
+  else line = null;
   return (
     <div className="banner-picker">
       <div className="picker-row">
-        <label className="field picker-field">
-          <span className="field-label">{T.app.bannerLabel}</span>
-          <select className="select picker-select" value={P[current] ? current : "custom"} onChange={(e) => onPick(e.target.value)}>
+        <div className="field picker-field">
+          <span className="picker-label-row">
+            <label className="field-label" htmlFor="banner-select">{T.app.bannerLabel}</label>
+            <HelpButton label={T.app.bannerLabel} text={hint} />
+          </span>
+          <select id="banner-select" className="select picker-select" value={P[current] ? current : "custom"} onChange={(e) => onPick(e.target.value)}>
             {Object.entries(P).map(([key, p]) => <option key={key} value={key}>{p.title}</option>)}
             <option value="custom">{T.app.customBanner}</option>
           </select>
-        </label>
-        <button type="button" className="btn btn--reset" onClick={onReset} title={T.app.resetTitle}>{T.app.reset}</button>
-        <button type="button" className="btn btn--reset" onClick={share} title={T.app.shareTitle}>{T.app.share}</button>
+        </div>
+        <button type="button" className="btn btn--secondary btn--reset" onClick={onReset} title={T.app.resetTitle}>{T.app.reset}</button>
+        <button type="button" className="btn btn--primary btn--reset" onClick={share} title={T.app.shareTitle}>{T.app.share}</button>
       </div>
       {line}
     </div>

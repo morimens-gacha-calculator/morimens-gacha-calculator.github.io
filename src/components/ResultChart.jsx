@@ -15,7 +15,7 @@ export function themeColors() {
   const v = (name) => cs.getPropertyValue(name).trim();
   return {
     line: v("--blue"), fill: v("--chart-fill"), tick: v("--chart-tick"), grid: v("--chart-grid"),
-    marker: v("--chart-marker"), guide: v("--chart-guide"), accent: v("--accent"), series: [v("--s1"), v("--s2"), v("--s3"), v("--s4"), v("--s5"), v("--s6")],
+    marker: v("--chart-marker"), guide: v("--chart-guide"), gold: v("--gold"), inset: v("--inset"), series: [v("--s1"), v("--s2"), v("--s3"), v("--s4"), v("--s5"), v("--s6")],
   };
 }
 
@@ -31,7 +31,7 @@ const markerPlugin = {
     for (const { m, x } of shown) {
       ctx.save();
       ctx.strokeStyle = m.color;
-      // strong: solid (your pulls); accent: a thicker, coloured dash (the average); otherwise a thin dash
+      // strong: solid (your pulls); accent: a thicker dash in the answer colour (the average); otherwise a thin dash
       ctx.lineWidth = m.strong || m.accent ? 2 : 1;
       ctx.setLineDash(m.strong ? [] : m.accent ? [6, 3] : [4, 4]);
       ctx.beginPath(); ctx.moveTo(x, area.top); ctx.lineTo(x, area.bottom); ctx.stroke();
@@ -39,7 +39,7 @@ const markerPlugin = {
     }
     for (const { m, x } of shown) {
       ctx.save();
-      ctx.font = `${m.strong || m.accent ? 600 : 500} 12px Roboto, system-ui, sans-serif`;
+      ctx.font = `${m.strong || m.accent ? 600 : 500} 12px "Inter Variable", system-ui, sans-serif`;
       const w = ctx.measureText(m.label).width;
       const right = x + 6 + w > area.right; // flip to the left side near the right edge
       const x0 = right ? x - 6 - w : x + 6;
@@ -57,6 +57,7 @@ const markerPlugin = {
   },
 };
 ChartJS.register(markerPlugin);
+ChartJS.defaults.font.family = "\"Inter Variable\", system-ui, sans-serif";
 
 // Thin a long series to about `max` points (keeps the first and last)
 export function sample(values, xMax, max = 900) {
@@ -104,7 +105,7 @@ export default function ResultChart({ state, update, engine, theme, simple = fal
 
     // The lines the person picked
     const markers = [];
-    if (lines.mean) markers.push({ x: r.mean, label: L.average(simple ? fmtInt(r.mean) : fmtNum(r.mean)), color: C.accent || C.guide, accent: true });
+    if (lines.mean) markers.push({ x: r.mean, label: L.average(simple ? fmtInt(r.mean) : fmtNum(r.mean)), color: C.gold || C.guide, accent: true });
     for (const p of lines.pcts) {
       const x = quantile(p / 100);
       if (x != null) markers.push({ x, label: p === 50 ? L.median(fmtInt(x)) : L.pctAt(p, fmtInt(x)), color: C.guide });
