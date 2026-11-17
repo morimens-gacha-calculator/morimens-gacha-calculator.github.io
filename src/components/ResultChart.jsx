@@ -9,6 +9,58 @@ import { budgetRows, chanceByPullRows, downloadChartPng, downloadCsv, fileName }
 
 ChartJS.register(LinearScale, PointElement, LineElement, Filler, Tooltip, Legend);
 
+// Phones (up to 640px wide): charts run edge to edge, the percentages sit inside the chart, and
+// the lines' labels move to a key under it, so a narrow chart keeps its width and nothing overlaps
+const PHONE = "(max-width: 640px)";
+export function usePhone() {
+  const query = typeof matchMedia === "function" ? matchMedia(PHONE) : null;
+  const [phone, setPhone] = useState(() => !!query?.matches);
+  useEffect(() => {
+    if (!query) return undefined;
+    const on = () => setPhone(query.matches);
+    query.addEventListener("change", on);
+    return () => query.removeEventListener("change", on);
+  }, [query]);
+  return phone;
+}
+
+// The y axis: a column of labels beside the chart, or (phones) labels inside it
+export function yAxis(phone, C, callback, extra = {}) {
+  return phone
+    ? { ...extra, grid: { color: C.grid }, border: { display: false },
+        ticks: { mirror: true, z: 1, padding: -4, maxTicksLimit: 6, color: C.tick, font: { size: 11 }, callback: (v, i) => (i === 0 ? "" : callback(v)) } }
+    : { ...extra, grid: { color: C.grid }, border: { color: C.grid }, ticks: { color: C.tick, callback, maxTicksLimit: 6 } };
+}
+export const phoneLayout = (phone) => (phone ? { padding: { left: 0, right: 6, top: 12 } } : undefined);
+
+// The key under a chart on phones: each line's look and its label
+export function MarkerKey({ items }) {
+  if (!items?.length) return null;
+  const sorted = [...items].sort((a, b) => (b.strong ? 1 : 0) - (a.strong ? 1 : 0) || a.x - b.x);
+  return (
+    <ul className="chart-key">
+      {sorted.map((m) => (
+        <li key={`${m.x}-${m.label}`} style={{ color: m.color }}>
+          <svg width="16" height="10" aria-hidden="true" focusable="false">
+            <line x1="0" x2="16" y1="5" y2="5" stroke={m.color} strokeWidth={m.strong || m.accent ? 2 : 1.5}
+              strokeDasharray={m.strong ? undefined : m.accent ? "5 3" : "3 3"} />
+          </svg>
+          {m.label}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+// PNG export keeps the labels on the image even where the screen shows them in a key
+export function downloadWithLabels(chart, name, opts) {
+  const m = chart.options?.plugins?.markers;
+  const hidden = m && m.labels === false;
+  if (hidden) { m.labels = true; chart.update("none"); }
+  try { downloadChartPng(chart, name, opts); }
+  finally { if (hidden) { m.labels = false; chart.update("none"); } }
+}
+
 // Chart colours come from the theme's CSS variables
 export function themeColors() {
   const cs = getComputedStyle(document.documentElement);
@@ -37,6 +89,8 @@ const markerPlugin = {
       ctx.beginPath(); ctx.moveTo(x, area.top); ctx.lineTo(x, area.bottom); ctx.stroke();
       ctx.restore();
     }
+    // on phones the labels go to a key under the chart instead (labels: false)
+    if (opts?.labels === false) return;
     for (const { m, x } of shown) {
       ctx.save();
       ctx.font = `${m.strong || m.accent ? 600 : 500} 12px "Inter Variable", system-ui, sans-serif`;
@@ -78,6 +132,7 @@ export default function ResultChart({ state, update, engine, theme, simple = fal
   const L = T.chart;
   const [view, setView] = useState("cdf");
   const chartRef = useRef(null);
+  const phone = usePhone();
   const r = engine.result;
   const b = r?.budget;
   const lines = simple
@@ -174,20 +229,22 @@ export default function ResultChart({ state, update, engine, theme, simple = fal
             options={{
               responsive: true, maintainAspectRatio: false, animation: false, parsing: false, normalized: true,
               interaction: { mode: "index", intersect: false },
+              layout: phoneLayout(phone),
               scales: {
-                x: { type: "linear", min: 0, max: chart.xMax, title: { display: true, text: L.xTitle, color: chart.C.tick }, ticks: { color: chart.C.tick, callback: (v) => fmtInt(v), maxTicksLimit: 8 }, grid: { color: chart.C.grid }, border: { color: chart.C.grid } },
-                y: { min: 0, max: chart.yMax, ticks: { color: chart.C.tick, callback: chart.yFmt, maxTicksLimit: 6 }, grid: { color: chart.C.grid }, border: { color: chart.C.grid } },
+                x: { type: "linear", min: 0, max: chart.xMax, title: { display: true, text: L.xTitle, color: chart.C.tick }, ticks: { color: chart.C.tick, callback: (v) => fmtInt(v), maxTicksLimit: phone ? 5 : 8 }, grid: { color: chart.C.grid }, border: { color: chart.C.grid } },
+                y: yAxis(phone, chart.C, chart.yFmt, { min: 0, max: chart.yMax }),
               },
               plugins: {
                 legend: { display: chart.legend, position: "bottom", labels: { boxWidth: 14, boxHeight: 3, color: chart.C.tick } },
                 tooltip: { callbacks: { title: (items) => L.pull(fmtInt(items[0]?.parsed.x)), label: chart.tip } },
-                markers: { items: chart.markers },
+                markers: { items: chart.markers, labels: !phone },
               },
             }}
           />
         )}
         {engine.status === "busy" && <div className="loading-overlay"><Progress engine={engine} /></div>}
       </div>
+      {phone && chart && <MarkerKey items={chart.markers} />}
       {simple && (
         <div className="s-actions">
           {children}
@@ -237,7 +294,7 @@ function ExportMenu({ result, chartRef, state, viewName, buttonClass = "chip-tab
             <button type="button" role="menuitem" className="menu-item" onClick={() => run(() => downloadCsv(fileName(title, L.fileBudget(result.budget.pulls)) + ".csv", budgetRows(result.budget, L)))}>{L.exportBudget(result.budget.pulls)}</button>
           )}
           <button type="button" role="menuitem" className="menu-item" disabled={!chartRef.current}
-            onClick={() => run(() => chartRef.current && downloadChartPng(chartRef.current, fileName(title, viewName) + ".png", image()))}>{L.exportImage}</button>
+            onClick={() => run(() => chartRef.current && downloadWithLabels(chartRef.current, fileName(title, viewName) + ".png", image()))}>{L.exportImage}</button>
         </div>
       )}
     </div>

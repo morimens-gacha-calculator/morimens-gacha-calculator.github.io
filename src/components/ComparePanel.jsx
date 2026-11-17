@@ -4,8 +4,8 @@ import { HelpButton } from "./Help.jsx";
 import NumberInput from "./NumberInput.jsx";
 import { TrashIcon } from "./Icon.jsx";
 import { fmtInt, fmtNum, fmtPct } from "../model.js";
-import { themeColors, sample, usePopup } from "./ResultChart.jsx";
-import { downloadChartPng, downloadCsv, fileName } from "../export.js";
+import { MarkerKey, downloadWithLabels, phoneLayout, sample, themeColors, usePhone, usePopup, yAxis } from "./ResultChart.jsx";
+import { downloadCsv, fileName } from "../export.js";
 import { useT, errorText } from "../i18n/index.js";
 
 // Side-by-side comparison of saved setups (banner + plan + pity)
@@ -21,6 +21,7 @@ export default function ComparePanel({ items, results, budget, setBudget, rename
   });
   const ready = rows.filter((x) => x.r);
   const chartRef = useRef(null);
+  const phone = usePhone();
 
   // Best value per column: lowest pulls, highest chance
   const best = {
@@ -81,19 +82,21 @@ export default function ComparePanel({ items, results, budget, setBudget, rename
             options={{
               responsive: true, maintainAspectRatio: false, animation: false, parsing: false, normalized: true,
               interaction: { mode: "index", intersect: false },
+              layout: phoneLayout(phone),
               scales: {
-                x: { type: "linear", min: 0, max: chart.xMax, title: { display: true, text: T.chart.xTitle, color: chart.C.tick }, ticks: { color: chart.C.tick, callback: (v) => fmtInt(v), maxTicksLimit: 9 }, grid: { color: chart.C.grid }, border: { color: chart.C.grid } },
-                y: { min: 0, max: 1, ticks: { color: chart.C.tick, callback: (v) => `${Math.round(v * 100)}%`, maxTicksLimit: 6 }, grid: { color: chart.C.grid }, border: { color: chart.C.grid } },
+                x: { type: "linear", min: 0, max: chart.xMax, title: { display: true, text: T.chart.xTitle, color: chart.C.tick }, ticks: { color: chart.C.tick, callback: (v) => fmtInt(v), maxTicksLimit: phone ? 5 : 9 }, grid: { color: chart.C.grid }, border: { color: chart.C.grid } },
+                y: yAxis(phone, chart.C, (v) => `${Math.round(v * 100)}%`, { min: 0, max: 1 }),
               },
               plugins: {
                 legend: { display: true, position: "bottom", labels: { boxWidth: 14, boxHeight: 3, color: chart.C.tick } },
                 tooltip: { callbacks: { title: (it) => T.chart.pull(fmtInt(it[0]?.parsed.x)), label: (c) => `${c.dataset.label}: ${fmtPct(c.parsed.y)}` } },
-                markers: { items: budget ? [{ x: budget, strong: true, color: chart.C.marker, label: L.marker(fmtInt(budget)) }] : [] },
+                markers: { items: budget ? [{ x: budget, strong: true, color: chart.C.marker, label: L.marker(fmtInt(budget)) }] : [], labels: !phone },
               },
             }}
           />
         )}
       </div>
+      {phone && chart && budget > 0 && <MarkerKey items={[{ x: budget, strong: true, color: chart.C.marker, label: L.marker(fmtInt(budget)) }]} />}
 
       <div className="table-scroll">
         <table className="probability-table compare-table">
@@ -172,7 +175,7 @@ export function CompareExport({ rows, ready, budget, chartRef, showBest, showWor
           <button type="button" role="menuitem" className="menu-item" onClick={() => run(() => downloadCsv(fileName(L.fileTable) + ".csv", table()))}>{L.exportTable}</button>
           <button type="button" role="menuitem" className="menu-item" onClick={() => run(() => downloadCsv(fileName(L.fileByPull) + ".csv", byPull()))}>{L.exportByPull}</button>
           <button type="button" role="menuitem" className="menu-item" disabled={!chartRef.current}
-            onClick={() => run(() => chartRef.current && downloadChartPng(chartRef.current, fileName(L.fileTable) + ".png", image()))}>{T.chart.exportImage}</button>
+            onClick={() => run(() => chartRef.current && downloadWithLabels(chartRef.current, fileName(L.fileTable) + ".png", image()))}>{T.chart.exportImage}</button>
         </div>
       )}
     </div>

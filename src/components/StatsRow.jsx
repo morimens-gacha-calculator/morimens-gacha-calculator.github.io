@@ -1,11 +1,12 @@
 import { fmtInt, fmtNum } from "../model.js";
+import { Term } from "./Help.jsx";
 import { useT } from "../i18n/index.js";
 
 export default function StatsRow({ engine, settings }) {
   const T = useT();
   const L = T.stats;
   // with the technical wording, each term explains itself on hover or tap
-  const term = (label, explain) => (T.simpleWording ? label : <span className="term" title={explain} tabIndex={0}>{label}</span>);
+  const term = (label, explain) => (T.simpleWording ? label : <Term label={label} explain={explain} />);
   const r = engine.result;
   if (!r) return null;
   const tiles = [

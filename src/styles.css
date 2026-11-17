@@ -851,3 +851,42 @@ html[data-input="mouse"] .select:focus { border-color: var(--line-strong); outli
 /* standalone numbers use natural digit widths (fixed-width digits spread out "1,1"); tables keep
    fixed-width digits so their columns line up */
 .stat-value, .s-stat dd, .result-value { font-variant-numeric: proportional-nums; }
+
+/* ══ Phones: charts edge to edge (step 23) ══════════════════════════════════════════════════
+   Slimmer paddings, the chart runs to its card's edges and is taller, the percentages sit inside
+   it (ResultChart.jsx), and the lines' labels move to a key under it. */
+.chart-key { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 0; padding: 0; list-style: none; font-size: 13px; font-weight: 500; }
+.chart-key li { display: inline-flex; align-items: center; gap: 6px; }
+.chart-key svg { flex: none; }
+@media (max-width: 640px) {
+  .content-box { padding: 14px 8px; }
+  .s-card { padding: 12px 10px; }
+  /* simple view: the chart wells reach the answer card's edges */
+  .chart-wrapper.is-simple .chart-container, .s-compare-chart {
+    margin: 0 -10px; border-radius: 0; border-left: 0; border-right: 0; padding: 6px 4px 2px;
+  }
+  .chart-wrapper.is-simple .chart-container { height: 320px; }
+  .s-compare-chart { height: 260px; }
+  /* full view: they reach the main box's edges */
+  .results-col .chart-container { margin: 0 -8px; border-radius: 0; border-left: 0; border-right: 0; height: 320px; padding: 6px 4px 2px; }
+  .results-col .compare-chart { height: 260px; }
+}
+/* dotted terms: a button that looks like a word */
+.term { font: inherit; color: inherit; background: none; border: 0; padding: 0; text-decoration: underline dotted; text-underline-offset: 3px; cursor: help; }
+.term-box { display: inline-flex; }
+.term-pop { white-space: normal; font-weight: 400; color: #f1efff; }
+/* phones: a comparison row is a small grid of its own: name and actions on top, the three numbers under */
+@media (max-width: 640px) {
+  .s-cmp { display: grid; grid-template-columns: minmax(0, 1fr); }
+  .s-cmp-row:not(.s-cmp-head) {
+    display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto; column-gap: 14px; align-items: center;
+    grid-template-areas: "name name name act" "avg nine chance chance"; border-top: 1px solid var(--card-line); padding: 6px 0;
+  }
+  .s-cmp-row:not(.s-cmp-head) > * { border-top: 0; padding: 0; }
+  .s-cmp-row > :nth-child(1) { grid-area: name; }
+  .s-cmp-row > :nth-child(2) { grid-area: avg; }
+  .s-cmp-row > :nth-child(3) { grid-area: nine; }
+  .s-cmp-row > :nth-child(4) { grid-area: chance; }
+  .s-cmp-row > :nth-child(5) { grid-area: act; }
+  .s-cmp-name { padding-bottom: 2px !important; }
+}

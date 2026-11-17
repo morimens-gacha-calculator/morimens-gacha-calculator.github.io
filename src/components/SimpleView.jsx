@@ -4,7 +4,7 @@ import { allAlts, allNodes, fmtInt, fmtPct, itemNames, listOfInts, newId, num, r
 import { errorText, useT } from "../i18n/index.js";
 import NumberInput from "./NumberInput.jsx";
 import Progress from "./Progress.jsx";
-import ResultChart, { sample, themeColors } from "./ResultChart.jsx";
+import ResultChart, { MarkerKey, phoneLayout, sample, themeColors, usePhone, yAxis } from "./ResultChart.jsx";
 import ItemPicker from "./ItemPicker.jsx";
 import { HelpButton } from "./Help.jsx";
 import { TrashIcon } from "./Icon.jsx";
@@ -434,6 +434,7 @@ function SimpleCompare({ items, results, budget, setBudget, remove, load, theme,
   const T = useT();
   const S = T.simple;
   const chartRef = useRef(null);
+  const phone = usePhone();
   const rows = items.map((it, i) => {
     const res = results[it.id];
     const r = res?.status === "ok" ? res.result : null;
@@ -478,19 +479,21 @@ function SimpleCompare({ items, results, budget, setBudget, remove, load, theme,
             options={{
               responsive: true, maintainAspectRatio: false, animation: false, parsing: false, normalized: true,
               interaction: { mode: "index", intersect: false },
+              layout: phoneLayout(phone),
               scales: {
-                x: { type: "linear", min: 0, max: chart.xMax, title: { display: true, text: T.chart.xTitle, color: chart.C.tick }, ticks: { color: chart.C.tick, callback: (v) => fmtInt(v), maxTicksLimit: 8 }, grid: { color: chart.C.grid }, border: { color: chart.C.grid } },
-                y: { min: 0, max: 1, ticks: { color: chart.C.tick, callback: (v) => `${Math.round(v * 100)}%`, maxTicksLimit: 6 }, grid: { color: chart.C.grid }, border: { color: chart.C.grid } },
+                x: { type: "linear", min: 0, max: chart.xMax, title: { display: true, text: T.chart.xTitle, color: chart.C.tick }, ticks: { color: chart.C.tick, callback: (v) => fmtInt(v), maxTicksLimit: phone ? 5 : 8 }, grid: { color: chart.C.grid }, border: { color: chart.C.grid } },
+                y: yAxis(phone, chart.C, (v) => `${Math.round(v * 100)}%`, { min: 0, max: 1 }),
               },
               plugins: {
                 legend: { display: false },
                 tooltip: { callbacks: { title: (it) => T.chart.pull(fmtInt(it[0]?.parsed.x)), label: (c) => `${c.dataset.label}: ${fmtPct(c.parsed.y)}` } },
-                markers: { items: budget > 0 ? [{ x: budget, strong: true, color: chart.C.marker, bg: chart.C.inset, label: S.cmpLine(fmtInt(budget)) }] : [] },
+                markers: { items: budget > 0 ? [{ x: budget, strong: true, color: chart.C.marker, bg: chart.C.inset, label: S.cmpLine(fmtInt(budget)) }] : [], labels: !phone },
               },
             }}
           />
         </div>
       )}
+      {phone && chart && budget > 0 && <MarkerKey items={[{ x: budget, strong: true, color: chart.C.marker, label: S.cmpLine(fmtInt(budget)) }]} />}
       {items.length === 1 && !current && <p className="s-hint">{S.compareOne}</p>}
       <div className="s-cmp" role="table" aria-label={S.compareTitle}>
         <div className="s-cmp-row s-cmp-head" role="row">
