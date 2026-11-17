@@ -1,6 +1,6 @@
 /* Light layout after the reference calculator: preset nav on top, one white content box,
    setup card + pull plan side by side, then the question, chart, stats and tables. */
-/* Dark theme by default (a lifted navy, not black); html.theme-light switches to light. */
+/* The one theme: a lifted navy, not black. */
 :root {
   color-scheme: dark;
   --page: #232638;
@@ -34,38 +34,6 @@
   --s1: #4aa8e8; --s2: #f08a4b; --s3: #3cc79a; --s4: #b9a6ff; --s5: #f06ba0; --s6: #e8c547;
   --radius: 14px;
   --font: "Roboto", "Segoe UI", system-ui, sans-serif;
-}
-html.theme-light {
-  color-scheme: light;
-  --page: #e9ecf6;
-  --box: rgba(255, 255, 255, 0.90);
-  --ink: #1f2333;
-  --ink-2: #3d4255;
-  --muted: #6b7085;
-  --line: #e2e5ef;
-  --field: #f6f7fb;
-  --field-focus: #ffffff;
-  --surface: rgba(246, 247, 251, 0.9);
-  --nav-bg: rgba(255, 255, 255, 0.85);
-  --accent: #8479cc;
-  --accent-soft: #eeebfb;
-  --primary: #232338;
-  --primary-ink: #ffffff;
-  --blue: #3498db;
-  --blue-soft: #e3f1fb;
-  --bar-track: #f1f3f8;
-  --bar-muted: #c3d9ea;
-  --ok: #1e8e3e; --ok-bg: #e6f4ea;
-  --err: #c0392b; --err-bg: #fdecea;
-  --pop-bg: #232338;
-  --target-bg: #f4f5fb;
-  --bg-fade: rgba(233, 236, 246, 0.72);
-  --chart-tick: #6b7085;
-  --chart-grid: #eef0f5;
-  --chart-fill: rgba(52, 152, 219, 0.14);
-  --chart-marker: #232338;
-  --chart-guide: #6b7085;
-  --s1: #3498db; --s2: #e67e22; --s3: #16a085; --s4: #8e44ad; --s5: #d6336c; --s6: #b8860b;
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; }

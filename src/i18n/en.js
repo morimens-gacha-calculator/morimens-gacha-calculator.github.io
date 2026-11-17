@@ -21,8 +21,6 @@ export default {
     viewFull: "Full view",
     title: "Morimens Gacha Calculator",
     customHint: "Your own banner. Change its rules in the Banner rules tab; it is remembered separately from the presets.",
-    lightTheme: "Light theme",
-    darkTheme: "Dark theme",
     hideHelp: "Hide help buttons",
     showHelp: "Show help buttons",
     language: "Language",

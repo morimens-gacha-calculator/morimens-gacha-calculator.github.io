@@ -51,9 +51,9 @@ test fails) and on pull requests.
 | `src/share.js` | Shareable links (the setup packed after `#s=`) |
 | `src/export.js` | CSV and chart image downloads |
 | `src/components/` | UI: preset nav, setup card (pity / banner rules / settings), pull plan, question, chart, stats, tables |
-| `src/styles.css` | All styling (colour tokens for both themes at the top) |
+| `src/styles.css` | All styling (colour tokens at the top) |
 | `src/i18n/en.js` | Every piece of interface text |
-| `src/site.config.js` | Background image, default theme, default preset, and the footer's site name, banner patch version and "Source code" link (`SOURCE_URL`) |
+| `src/site.config.js` | Background images (one per view), default preset, and the footer's site name, banner patch version and "Source code" link (`SOURCE_URL`) |
 
 To add a banner preset, add an entry to `presets()` in `src/model.js` and its title, hint
 and names under `presets` in each language file. "Custom banner" in the dropdown is the
@@ -82,14 +82,17 @@ To add another language:
 Error messages from the calculation engine itself (`src/engine/banner-engine.js`) are
 technical and stay in English; everything a player normally sees is in the language file.
 
-## Changing the background
+## Changing the backgrounds
+
+The simple view and the full view each have their own background, set in `BACKGROUNDS` in
+`src/site.config.js`. Both use the same images until you change one.
 
 1. Put your image in `src/assets/` (any web format: .webp, .jpg, .png, .avif).
-2. In `src/site.config.js`, change the `desktop` import to your file. `mobile` is used on
-   narrow screens; point it at the same file if you only have one size.
-3. Optional: `position`, `size` and `fixed` control how it is placed. `desktop: null`
-   turns the image off.
-4. How strongly it shows through is the `--bg-fade` tint in `src/styles.css` (one value for
-   the dark theme, one for the light theme).
+2. In `src/site.config.js`, import it and use it as `desktop` under `simple` or `full`.
+   `mobile` is used on narrow screens; leave it out to reuse the desktop image.
+3. Optional: `position`, `size` and `fixed` control how it is placed; `desktop: null`
+   turns the image off for that view.
+4. `fade` is the tint over the image that keeps text readable, e.g.
+   `"rgba(35, 38, 56, 0.5)"`; `null` uses the default `--bg-fade` in `src/styles.css`.
 
 `scripts/make_bg.py` regenerates the default starfield image if you want to tweak it.

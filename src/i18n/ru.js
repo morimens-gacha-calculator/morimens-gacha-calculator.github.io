@@ -20,8 +20,6 @@ export default {
     viewFull: "Полный",
     title: "Morimens Gacha Calculator",
     customHint: "Ваш собственный баннер. Меняйте его правила во вкладке «Правила баннера»; он хранится отдельно от готовых баннеров.",
-    lightTheme: "Светлая тема",
-    darkTheme: "Тёмная тема",
     hideHelp: "Скрыть подсказки",
     showHelp: "Показать подсказки",
     language: "Язык",

@@ -5,7 +5,7 @@ import { decodeSetup, linkCode, makeShareLink, makeShortLink, shareParts, shareS
 import { shareCard } from "./export.js";
 import { useCompare } from "./useCompare.js";
 import { I18nContext, LOCALES, browserLocale, setLocale, withWording } from "./i18n/index.js";
-import { BACKGROUND, DEFAULT_THEME, DEFAULT_PRESET, SITE_NAME, BANNERS_PATCH, SOURCE_URL } from "./site.config.js";
+import { BACKGROUNDS, DEFAULT_PRESET, SITE_NAME, BANNERS_PATCH, SOURCE_URL } from "./site.config.js";
 import { HelpContext } from "./components/Help.jsx";
 import BannerPicker from "./components/BannerPicker.jsx";
 import SetupCard from "./components/SetupCard.jsx";
@@ -28,14 +28,7 @@ const load = (key, check) => {
 const store = (key, v) => { try { localStorage.setItem(key, typeof v === "string" ? v : JSON.stringify(v)); } catch { /* ignore */ } };
 const read = (key) => { try { return localStorage.getItem(key); } catch { return null; } };
 
-// Theme and language are applied before rendering, so charts and model text are right on the first draw
-function applyTheme(t) { document.documentElement.classList.toggle("theme-light", t === "light"); }
-function loadTheme() {
-  const saved = read("banner-calc-theme");
-  const t = saved === "light" || saved === "dark" ? saved : DEFAULT_THEME;
-  applyTheme(t);
-  return t;
-}
+// The language is applied before rendering, so charts and model text are right on the first draw
 function loadLang() {
   const saved = read("banner-calc-lang");
   const code = LOCALES[saved] ? saved : browserLocale();
@@ -44,13 +37,19 @@ function loadLang() {
   return code;
 }
 
-const backgroundStyle = BACKGROUND.desktop ? {
-  "--bg-desktop": `url("${BACKGROUND.desktop}")`,
-  "--bg-mobile": `url("${BACKGROUND.mobile ?? BACKGROUND.desktop}")`,
-  "--bg-position": BACKGROUND.position,
-  "--bg-size": BACKGROUND.size,
-  position: BACKGROUND.fixed ? "fixed" : "absolute",
-} : null;
+// The background of a view ("simple" or "full"), from src/site.config.js
+const backgroundStyle = (view) => {
+  const B = BACKGROUNDS[view] ?? BACKGROUNDS.simple;
+  if (!B?.desktop) return null;
+  return {
+    "--bg-desktop": `url("${B.desktop}")`,
+    "--bg-mobile": `url("${B.mobile ?? B.desktop}")`,
+    "--bg-position": B.position ?? "center top",
+    "--bg-size": B.size ?? "cover",
+    ...(B.fade ? { "--bg-fade": B.fade } : {}),
+    position: B.fixed ? "fixed" : "absolute",
+  };
+};
 
 // The parts of the state that define a setup worth comparing
 const snapshotOf = (s) => ({ preset: s.preset, banner: s.banner, goal: s.goal, goalMode: s.goalMode, start: s.start, settings: s.settings });
@@ -93,7 +92,7 @@ export default function App() {
   const [undoKind, setUndoKind] = useState("reset");
   const [linkError, setLinkError] = useState(false);
   const [compare, setCompare] = useState(() => load(COMPARE_KEY, (c) => c && Array.isArray(c.items)) ?? { items: [], budget: 600 });
-  const [theme, setTheme] = useState(loadTheme);
+  const theme = "dark"; // the one theme (charts read their colours from it)
   const [showHelp, setShowHelp] = useState(true);
   const [runToken, setRunToken] = useState(0);
   const [view, setView] = useState("single");
@@ -113,9 +112,7 @@ export default function App() {
   useEffect(() => store(SETTINGS_KEY, settings), [settings]);
   useEffect(() => { if (state.preset === "custom") store(CUSTOM_KEY, snapshotOf(state)); }, [state]);
   useEffect(() => store(COMPARE_KEY, compare), [compare]);
-  useEffect(() => store("banner-calc-theme", theme), [theme]);
   useEffect(() => store("banner-calc-lang", lang), [lang]);
-  const toggleTheme = () => { const t = theme === "dark" ? "light" : "dark"; applyTheme(t); setTheme(t); };
   const changeLang = (code) => {
     setLocale(code);
     document.documentElement.lang = code;
@@ -185,7 +182,9 @@ export default function App() {
   return (
     <I18nContext.Provider value={T}>
       <HelpContext.Provider value={showHelp}>
-        {backgroundStyle && <div className="background-container" style={backgroundStyle} aria-hidden="true" />}
+        {backgroundStyle(simpleView ? "simple" : "full") && (
+          <div key={simpleView ? "simple" : "full"} className="background-container" style={backgroundStyle(simpleView ? "simple" : "full")} aria-hidden="true" />
+        )}
         <main className="main">
           <section className="content-box" aria-label={T.app.title}>
             <div className="header-row">
@@ -203,7 +202,6 @@ export default function App() {
                   <button type="button" aria-pressed={simpleView} className={simpleView ? "is-on" : ""} onClick={() => setViewMode("simple")}>{T.app.viewSimple}</button>
                   <button type="button" aria-pressed={!simpleView} className={!simpleView ? "is-on" : ""} onClick={() => setViewMode("full")}>{T.app.viewFull}</button>
                 </div>
-                <button type="button" className="btn btn--ghost" onClick={toggleTheme}>{theme === "dark" ? T.app.lightTheme : T.app.darkTheme}</button>
                 <button type="button" className="btn btn--ghost" onClick={() => setShowHelp((v) => !v)}>{showHelp ? T.app.hideHelp : T.app.showHelp}</button>
               </div>
             </div>
