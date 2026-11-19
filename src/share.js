@@ -2,7 +2,7 @@
 // the address after "#s=", so nothing is sent to the server. An unchanged built-in banner is
 // stored by its key only (short links; names in the reader's language); an edited or custom
 // banner is stored in full. Settings are not shared: they're the reader's own, for every banner.
-import { applyNames, fmtInt, fmtNum, fmtPct, freshState, fromEngineTree, newId, planTitle, presets, reqLabel, stagesOf, stageView } from "./model.js";
+import { applyNames, fmtInt, fmtPct, freshState, fromEngineTree, newId, planTitle, presets, reqLabel, stagesOf, stageView } from "./model.js";
 
 const VERSION = 2; // 1: banner in the editor's own form (still read)
 
@@ -166,29 +166,56 @@ function bannerFromPayload(p, version) {
   };
 }
 
-// One line saying what the link shows, for the message it's pasted into (chat previews can't
-// read the setup: it sits after "#", which never reaches a server)
-// The two halves: what's set up ("Kaleido banner (Arc 2) · Arachne ×17") and what it gives
-// ("<0.01% with 25 pulls (average 13,600.08)"), for the copied text and the preview card
-export function shareParts(state, result, T) {
-  const one = (v) => {
-    const banner = planTitle(v);
-    const goals = v.goal.map((g) => reqLabel(v.banner, g)).join(v.goalMode === "all" ? T.goalLabel.joinAll : T.goalLabel.joinAny);
-    return `${banner} · ${goals}`;
-  };
-  const title = [state, ...stagesOf(state).map((_, k) => stageView(state, k + 1))].map(one).join(T.stages.then);
-  let detail = "";
-  if (result?.spend === "fixed") detail = T.stages.shareFixed(fmtPct(result.chanceAll));
-  else if (result) {
-    if (state.mode === "budget" && result.budget) detail = T.app.shareBudget(fmtPct(result.budget.chanceGoal), fmtInt(state.budget), fmtNum(result.mean));
-    else if (result.requiredPulls != null) detail = T.app.sharePulls(state.desired, fmtInt(result.requiredPulls), fmtNum(result.mean));
-    else detail = T.app.shareAverage(fmtNum(result.mean));
+// What a shared link says, for the message it's pasted into (chat previews can't read the setup:
+// it sits after "#", which never reaches a server). The answer comes first, then what was asked:
+//
+//   59.6% chance with 300 pulls
+//   • Limited character banner: limited character ×4
+//   • Limited wheel banner: limited wheel ×4
+//   Average: 287 pulls
+//
+// (one banner plan: its line without the bullet). Each banner plan on its own pulls: "… chance to
+// get everything", with each plan's pulls on its line.
+function shareLines(state, result, T) {
+  const X = T.share;
+  const fixed = result?.spend === "fixed";
+  const views = [state, ...stagesOf(state).map((_, k) => stageView(state, k + 1))];
+  const plans = views.map((v) => ({
+    name: planTitle(v),
+    goals: v.goal.map((g) => reqLabel(v.banner, g)).join(v.goalMode === "all" ? T.goalLabel.joinAll : T.goalLabel.joinAny),
+    pulls: fixed ? Math.max(0, Math.floor(Number(v.budget) || 0)) : null,
+  }));
+  let headline = "", extra = "";
+  if (result) {
+    const average = Number.isFinite(result.mean) ? X.average(Math.round(result.mean), fmtInt(result.mean)) : "";
+    if (fixed) headline = X.chanceAll(fmtPct(result.chanceAll));
+    else if (state.mode === "budget" && result.budget) {
+      const b = Math.max(0, Math.floor(Number(state.budget) || 0));
+      headline = X.chanceWith(fmtPct(result.budget.chanceGoal), b, fmtInt(b));
+      extra = average;
+    } else if (result.requiredPulls != null) {
+      const want = `${Number(state.desired).toLocaleString(T.numberLocale, { maximumFractionDigits: 2 })}%`;
+      headline = X.pullsFor(result.requiredPulls, fmtInt(result.requiredPulls), want);
+      extra = average;
+    } else headline = average;
   }
-  return { title, detail: detail.replace(/^ - /, "") };
+  const line = (p) => (p.pulls != null ? X.planPulls(p.name, X.pulls(p.pulls, fmtInt(p.pulls)), p.goals) : X.plan(p.name, p.goals));
+  return { headline, plans, extra, line };
 }
+
+// For the preview card: title = the answer, detail = what was asked (one plan: its banner and goals;
+// several: their names in order) and the average
+export function shareParts(state, result, T) {
+  const { headline, plans, extra, line } = shareLines(state, result, T);
+  const setup = plans.length === 1 ? line(plans[0]) : plans.map((p) => p.name).join(T.share.then);
+  if (!headline) return { title: setup, detail: "" };
+  return { title: headline, detail: [setup, extra].filter(Boolean).join(" · ") };
+}
+// For the message: one thing per line
 export function shareSummary(state, result, T) {
-  const { title, detail } = shareParts(state, result, T);
-  return detail ? `${title} - ${detail}` : title;
+  const { headline, plans, extra, line } = shareLines(state, result, T);
+  const asked = plans.length === 1 ? [line(plans[0])] : plans.map((p) => `• ${line(p)}`);
+  return [headline, ...asked, extra].filter(Boolean).join("\n");
 }
 
 // A short link (/s/k7Fq2aB) from the site's own server functions (functions/api/share.js), with

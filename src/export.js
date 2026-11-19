@@ -85,24 +85,36 @@ export function shareCard({ title, detail }, chartCanvas) {
   ctx.fillStyle = v("--pop-bg", "#15172a");
   ctx.fillRect(0, 0, W, H);
   const font = (w, px) => `${w} ${px}px "Inter Variable", system-ui, sans-serif`;
-  // title: up to two lines, cut with "…"
+  // text in up to a few lines at its full size, cut with "…" (never squeezed)
+  const wrap = (text, maxLines) => {
+    const lines = [""];
+    for (const w of String(text).split(" ")) {
+      const last = lines[lines.length - 1];
+      const tryLine = last ? `${last} ${w}` : w;
+      if (ctx.measureText(tryLine).width <= W - 2 * pad || !last) lines[lines.length - 1] = tryLine;
+      else if (lines.length < maxLines) lines.push(w);
+      else {
+        let cut = last;
+        while (cut && ctx.measureText(`${cut}…`).width > W - 2 * pad) cut = cut.slice(0, -1);
+        lines[lines.length - 1] = `${cut.trimEnd()}…`;
+        break;
+      }
+    }
+    return lines;
+  };
+  // the answer, big; what was asked under it
   ctx.textBaseline = "top";
   ctx.fillStyle = v("--ink", "#eceef6");
-  ctx.font = font(700, 44);
-  const words = title.split(" "), lines = [""];
-  for (const w of words) {
-    const tryLine = lines[lines.length - 1] ? `${lines[lines.length - 1]} ${w}` : w;
-    if (ctx.measureText(tryLine).width <= W - 2 * pad || !lines[lines.length - 1]) lines[lines.length - 1] = tryLine;
-    else if (lines.length < 2) lines.push(w);
-    else { lines[1] = `${lines[1]}…`; break; }
-  }
-  lines.forEach((l, i) => ctx.fillText(l, pad, pad + i * 54, W - 2 * pad));
-  let y = pad + lines.length * 54 + 10;
+  ctx.font = font(700, 48);
+  const head = wrap(title, 2);
+  head.forEach((l, i) => ctx.fillText(l, pad, pad + i * 58));
+  let y = pad + head.length * 58 + 8;
   if (detail) {
-    ctx.fillStyle = v("--accent", "#a99cff");
-    ctx.font = font(600, 30);
-    ctx.fillText(detail, pad, y, W - 2 * pad);
-    y += 48;
+    ctx.fillStyle = v("--ink-2", "#9aa0b8");
+    ctx.font = font(500, 28);
+    const lines = wrap(detail, 2);
+    lines.forEach((l, i) => ctx.fillText(l, pad, y + i * 38));
+    y += lines.length * 38 + 10;
   }
   // the chart below, kept in proportion
   const footer = 40;

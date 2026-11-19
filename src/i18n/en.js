@@ -20,9 +20,6 @@ export default {
   numberLocale: "en-US",         // used to format numbers: 1,234.5
 
   app: {
-    shareBudget: (pct, pulls, avg) => ` - ${pct} with ${pulls} pulls (average ${avg})`,
-    sharePulls: (pct, pulls, avg) => ` - ${pct}% chance by ${pulls} pulls (average ${avg})`,
-    shareAverage: (avg) => ` - average ${avg} pulls`,
     toSimple: "Simple view",
     viewLabel: "View",
     viewSimple: "Simple",
@@ -256,7 +253,6 @@ export default {
   },
 
   stages: {
-    shareFixed: (pct) => `${pct} chance with each banner plan's own pulls`,
     bannerRules: "Banner rules",
     rulesTitle: (n) => `Banner rules · Banner plan ${n}`,
     importData: "Import from a file",
@@ -323,6 +319,16 @@ export default {
     distinct: (name) => `Each ${name} counts once: a repeat of one you already got doesn't count again.`,
     every: (n, name) => `All ${n} ${plurals(name)}, each one at least as many times as you ask.`,
     subset: (n) => `Only the ${n} you chose count.`,
+  },
+  share: {
+    chanceWith: (pct, n, pulls) => `${pct} chance with ${pulls} ${plural(n, "pull", "pulls")}`,
+    pullsFor: (n, pulls, pct) => `${pulls} ${plural(n, "pull", "pulls")} for a ${pct} chance`,
+    chanceAll: (pct) => `${pct} chance to get everything`,
+    average: (n, avg) => `Average: ${avg} ${plural(n, "pull", "pulls")}`,
+    pulls: (n, pulls) => `${pulls} ${plural(n, "pull", "pulls")}`,
+    plan: (name, goals) => `${name}: ${goals}`,
+    planPulls: (name, pulls, goals) => `${name} (${pulls}): ${goals}`,
+    then: ", then ",
   },
   simple: {
     pityTitle: "Pity",

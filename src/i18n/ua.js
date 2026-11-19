@@ -18,9 +18,6 @@ export default {
   numberLocale: "uk-UA",
 
   app: {
-    shareBudget: (pct, pulls, avg) => ` - ${pct} за ${pulls} круток (у середньому ${avg})`,
-    sharePulls: (pct, pulls, avg) => ` - ${pct}% шанс до ${pulls} круток (у середньому ${avg})`,
-    shareAverage: (avg) => ` - у середньому ${avg} круток`,
     toSimple: "Простий вигляд",
     viewLabel: "Вигляд",
     viewSimple: "Простий",
@@ -253,7 +250,6 @@ export default {
   },
 
   stages: {
-    shareFixed: (pct) => `шанс ${pct}, у кожного плану свої крутки`,
     bannerRules: "Правила банера",
     rulesTitle: (n) => `Правила банера · План банера ${n}`,
     importData: "Завантажити з файлу",
@@ -320,6 +316,16 @@ export default {
     distinct: (name) => `Кожен варіант «${name}» рахується один раз: повтор уже отриманого не рахується знову.`,
     every: (n, name) => `Усі ${n} варіантів «${name}», кожен не менше, ніж ви просите.`,
     subset: (n) => `Рахуються лише вибрані вами (${n}).`,
+  },
+  share: {
+    chanceWith: (pct, n, pulls) => `Шанс ${pct} з ${pulls} ${plural(n, "круткою", "крутками", "крутками")}`,
+    pullsFor: (n, pulls, pct) => `${pulls} ${plural(n, "крутка", "крутки", "круток")} для шансу ${pct}`,
+    chanceAll: (pct) => `Шанс ${pct} отримати все`,
+    average: (n, avg) => `У середньому: ${avg} ${plural(n, "крутка", "крутки", "круток")}`,
+    pulls: (n, pulls) => `${pulls} ${plural(n, "крутка", "крутки", "круток")}`,
+    plan: (name, goals) => `${name}: ${goals}`,
+    planPulls: (name, pulls, goals) => `${name} (${pulls}): ${goals}`,
+    then: ", потім ",
   },
   simple: {
     pityTitle: "Гарант",
