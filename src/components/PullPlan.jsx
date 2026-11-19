@@ -1,13 +1,11 @@
-import { HelpButton } from "./Help.jsx";
 import { useT } from "../i18n/index.js";
 import NumberInput from "./NumberInput.jsx";
-import Progress from "./Progress.jsx";
 import ItemPicker from "./ItemPicker.jsx";
 import { TrashIcon } from "./Icon.jsx";
 import { allAlts, itemNames, newId, num, rowSubset } from "../model.js";
 
-// The pull plan: one row per thing you want
-export default function PullPlan({ state, update, onCalculate, onAddCompare, note, engine }) {
+// The full view's "I want": one row per thing you want, and when the plan is done (all or any)
+export default function PullPlan({ state, update }) {
   const T = useT();
   const L = T.plan;
   const TYPES = { total: L.typeTotal, specific: L.typeSpecific, distinct: L.typeDistinct };
@@ -30,10 +28,6 @@ export default function PullPlan({ state, update, onCalculate, onAddCompare, not
 
   return (
     <div className="pull-plan-section">
-      <div className="section-title">
-        <h2>{L.title}</h2>
-        <HelpButton label={L.title} text={L.help} />
-      </div>
       <div className="rows-container">
         {state.goal.length === 0 && (
           <p className="empty-plan">{L.empty}</p>
@@ -114,14 +108,6 @@ export default function PullPlan({ state, update, onCalculate, onAddCompare, not
           </select>
         </label>
       )}
-      <div className="plan-buttons">
-        <button type="button" className="btn btn--soft" onClick={onAddCompare} disabled={!state.goal.length}>{L.addToCompare}</button>
-        {engine.status === "busy"
-          ? <button type="button" className="btn btn--calculate btn--cancel" onClick={engine.cancel}>{T.progress.cancel}</button>
-          : <button type="button" className="btn btn--calculate" onClick={onCalculate}>{L.calculate}</button>}
-      </div>
-      {engine.status === "busy" && <Progress engine={engine} compact />}
-      {note && <p className="muted small plan-note" role="status">{note}</p>}
     </div>
   );
 }

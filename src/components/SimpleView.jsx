@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Line } from "react-chartjs-2";
-import { allAlts, allNodes, fmtInt, fmtPct, itemNames, listOfInts, newId, newStage, num, presets, removeStage, reqLabel, sharesPity, stagesOf, stageUpdate, stageView } from "../model.js";
+import { allAlts, allNodes, altAt, fmtInt, fmtPct, itemNames, listOfInts, newId, nodeAt, num, parseChance, pathOf, planTitle, reqLabel, sharesPity, stagesOf, stageUpdate, stageView } from "../model.js";
 import { errorText, useT } from "../i18n/index.js";
 import NumberInput from "./NumberInput.jsx";
 import Progress from "./Progress.jsx";
@@ -9,6 +9,7 @@ import ItemPicker from "./ItemPicker.jsx";
 import { HelpButton } from "./Help.jsx";
 import { TrashIcon } from "./Icon.jsx";
 import { CompareExport } from "./ComparePanel.jsx";
+import { PlanRow, PlanTabs } from "./PlanTabs.jsx";
 
 // The simple view: the plan as a sentence ("I want any character ×2 and Pontos's wheel ×1, I
 // have 300 pulls…") and the answer in words, with one chart. It edits the same setup as the full
@@ -88,6 +89,69 @@ function goalText(banner, row, S) {
   return reqLabel(banner, row);
 }
 
+// ── What a goal counts (the "?" beside a group or pool goal) ─────────────────────────────
+// Written from the banner itself: the outcomes it takes in, how often it comes up among its
+// parent's results, and its guarantee.
+function shareOf(banner, key) {
+  const path = pathOf(key);
+  const parent = nodeAt(banner, path.slice(0, -1).join(","));
+  const own = parseChance(altAt(banner, key).p);
+  if (own !== "rest") return Number.isFinite(own) ? own : null;
+  let sum = 0;
+  for (const a of parent.alts) { const v = parseChance(a.p); if (v !== "rest" && Number.isFinite(v)) sum += v; }
+  return Math.max(0, 1 - sum);
+}
+function explainGoal(banner, row, kind, T) {
+  const S = T.simple, X = T.explain;
+  // "50%", "3.03%": a chance read at a glance, not to the decimals of the results
+  const pct = (p) => `${(p * 100).toLocaleString(T.numberLocale, { maximumFractionDigits: 2 })}%`;
+  const a = allAlts(banner).find((x) => x.key === row.path);
+  if (!a) return null;
+  const group = !a.isLeaf;
+  if (!group && (!a.isPool || kind === "item")) return null; // one outcome or item: it says what it is
+  const lines = [];
+  // how often, and the guarantee
+  const p = shareOf(banner, a.key);
+  if (p != null) lines.push(a.parentName ? X.rateIn(pct(p), a.parentName, a.name) : X.rateTop(pct(p), a.name));
+  const pity = Math.floor(num(a.alt.pity));
+  if (pity > 0) {
+    if (!a.parentName) lines.push(X.pityTop(pity, a.name));
+    else if (pity === 2) {
+      // with one other outcome beside it, name it: "If the last SSR was standard SSR, the next one is always limited SSR."
+      const others = nodeAt(banner, pathOf(a.key).slice(0, -1).join(",")).alts.filter((x) => x !== a.alt);
+      lines.push(others.length === 1 ? X.pityAfter(others[0].name, a.parentName, a.name) : X.pityTwo(a.parentName, a.name));
+    }
+    else lines.push(X.pityIn(pity, a.parentName, a.name));
+  }
+  if (group) {
+    const leaves = allAlts(banner).filter((x) => x.isLeaf && x.key.startsWith(`${a.key},`));
+    const list = leaves.map((x) => (x.isPool ? X.poolAny(itemNames(x.alt).length, x.name) : x.name));
+    return { what: S.anyOf(a.name), title: X.counts(S.anyOf(a.name)), list, lines };
+  }
+  const n = itemNames(a.alt).length;
+  const chosen = Array.isArray(row.items) && row.type !== "specific" && row.items.length < n ? row.items.length : null;
+  const what = kind === "distinct" ? S.differentOf(a.name).replace(/…$/, "") : kind === "every" ? S.everyOf(a.name, chosen ?? n) : S.anyOf(a.name);
+  const first = kind === "distinct" ? [X.distinct(a.name)] : kind === "every" ? [X.every(chosen ?? n, a.name)] : [];
+  return {
+    what, title: kind === "any" ? X.counts(what) : X.heading(what), list: kind === "any" ? [X.poolAny(n, a.name)] : [],
+    lines: [...first, ...(chosen != null ? [X.subset(chosen)] : []), X.poolEach(n, a.name), ...lines],
+  };
+}
+function GoalHelp({ banner, row, kind }) {
+  const T = useT();
+  const info = explainGoal(banner, row, kind, T);
+  if (!info) return null;
+  return (
+    <HelpButton label={T.explain.label(info.what)} text={(
+      <span className="goal-help">
+        <strong>{info.title}</strong>
+        {info.list.length > 0 && <ul>{info.list.map((x, i) => <li key={i}>{x}</li>)}</ul>}
+        {info.lines.map((x, i) => <span key={i} className="goal-help-line">{x}</span>)}
+      </span>
+    )} />
+  );
+}
+
 // ── Pieces ──────────────────────────────────────────────────────────────────────────────
 function GoalLine({ state, update, row, index, choices }) {
   const T = useT();
@@ -143,6 +207,7 @@ function GoalLine({ state, update, row, index, choices }) {
             </optgroup>
           )}
         </select>
+        {value !== "custom" && <GoalHelp banner={state.banner} row={row} kind={kind} />}
         </div>
         {/* each piece in its own shared column, so "×", the numbers and "each" line up on every row */}
         <span className="s-times" aria-hidden="true">×</span>
@@ -350,40 +415,20 @@ function Answer({ state, update, engine, theme, onCompare, onDetails, isSaved, c
   );
 }
 
-// One banner of the plan: its name (banner 1 is picked above the cards; the others here), its goals,
-// then its pity questions, or a note that its pity continues from the banner before it. With each
-// banner on its own pulls, its pull count too. A plan of one banner shows just goals and pity.
-function BannerBlock({ state, update, index, count, fixed, carries, onRemove, pullsRow }) {
+// The selected banner plan: its goals, then its pity questions, or a note that its pity continues
+// from the plan before it. With each banner plan on its own pulls, its pull count too. (Its banner
+// is picked in the plan row above, the same for every plan.)
+function BannerBlock({ state, update, index, fixed, carries, pullsRow }) {
   const T = useT();
   const S = T.simple, G = T.stages;
-  const P = presets();
   const choices = goalChoices(state.banner, S);
-  const stacked = count > 1;
   const addGoal = () => update((s) => {
     const first = choices.groups[0]?.options[0]?.value ?? choices.other[0]?.value;
     const blank = { id: newId(), path: "0", type: "total", item: 0, k: 1, copies: 1, from: "" };
     return { ...s, goal: [...s.goal, first ? applyChoice(s.banner, blank, first) : blank] };
   });
-  const pick = (key) => update((s) => {
-    const n = newStage(key);
-    return { ...s, preset: key, banner: n.banner, goal: n.goal, goalMode: "all", start: n.start, budget: n.pulls };
-  });
   return (
-    <div className={`s-banner ${stacked ? "is-stacked" : ""}`}>
-      {stacked && (
-        <div className="s-banner-head">
-          <span className="s-banner-n">{G.banner(index + 1)}</span>
-          {index === 0 ? (
-            <span className="s-banner-name">{P[state.preset]?.title ?? T.app.customBanner}</span>
-          ) : (
-            <select className="select s-field s-banner-pick" value={P[state.preset] ? state.preset : ""} onChange={(e) => pick(e.target.value)} aria-label={G.banner(index + 1)}>
-              {!P[state.preset] && <option value="">{T.app.customBanner}</option>}
-              {Object.entries(P).map(([k, p]) => <option key={k} value={k}>{p.title}</option>)}
-            </select>
-          )}
-          <button type="button" className="s-remove" onClick={onRemove} aria-label={G.removeBanner(index + 1)} title={G.removeBanner(index + 1)}><TrashIcon /></button>
-        </div>
-      )}
+    <div className="s-banner">
       <div className="s-goals">
         <div className="s-goal-head" aria-hidden="true"><span>{S.colWhat}</span><span>{S.colHowMany}</span></div>
         {state.goal.map((row, i) => (
@@ -391,8 +436,7 @@ function BannerBlock({ state, update, index, count, fixed, carries, onRemove, pu
         ))}
       </div>
       <button type="button" className="btn btn--quiet btn--sm s-add" onClick={addGoal}>+ {S.addGoal}</button>
-      {!stacked && <div className="s-divider" />}
-      {pullsRow}
+      {pullsRow && <><div className="s-divider" />{pullsRow}</>}
       {fixed && (
         <div className="s-row">
           <label className="s-row-label">
@@ -419,7 +463,7 @@ function BannerBlock({ state, update, index, count, fixed, carries, onRemove, pu
 // them (given the banners before it were done, which matters when pity carries over).
 export function StageList({ views, r, budgetMode }) {
   const T = useT();
-  const G = T.stages, P = presets();
+  const G = T.stages;
   const fixed = r.spend === "fixed";
   const title = fixed ? G.listFixed : budgetMode ? G.listBudget : G.listPulls;
   return (
@@ -432,7 +476,7 @@ export function StageList({ views, r, budgetMode }) {
           return (
             <li key={i}>
               <span className="s-stage-n">{i + 1}</span>
-              <span className="s-stage-name">{P[v.preset]?.title ?? T.app.customBanner}{fixed ? <span className="s-stage-pulls"> · {G.pullsCount(fmtInt(st.budget))}</span> : null}</span>
+              <span className="s-stage-name">{planTitle(v)}{fixed ? <span className="s-stage-pulls"> · {G.pullsCount(fmtInt(st.budget))}</span> : null}</span>
               <span className="s-stage-val">{value}</span>
             </li>
           );
@@ -461,15 +505,14 @@ function examplesFor(banner, S) {
   return out;
 }
 
-export default function SimpleView({ state, update, engine, theme, firstVisit, onExampleDone, onCompare, onDetails, compare, isSaved }) {
+export default function SimpleView({ state, update, engine, theme, plans, firstVisit, onExampleDone, onCompare, onDetails, compare, isSaved }) {
   const T = useT();
   const S = T.simple, G = T.stages;
-  // the plan's banners: 1 is the plan itself, the others are its stages (model.js)
-  const views = [state, ...stagesOf(state).map((_, k) => stageView(state, k + 1))];
+  // the plan's banner plans (1 is the plan itself, the others its stages: model.js); one is edited at a time
+  const views = plans.views;
+  const sel = plans.selected;
   const stacked = views.length > 1;
   const fixed = stacked && state.spend === "fixed";
-  // a new banner: the same kind as the last one (the next banner of that type is the usual plan)
-  const addBanner = () => update((s) => ({ ...s, stages: [...stagesOf(s), newStage(views[views.length - 1].preset in presets() ? views[views.length - 1].preset : s.preset in presets() ? s.preset : "limitedChar")] }));
   const examples = firstVisit ? examplesFor(state.banner, S) : [];
   // the pulls field: empty = "how many do I need" (pulls mode), a number = "do I have enough"
   const [pullsText, setPullsText] = useState(state.mode === "budget" ? String(state.budget) : "");
@@ -501,7 +544,10 @@ export default function SimpleView({ state, update, engine, theme, firstVisit, o
 
   return (
     <div className="simple-layout">
+      <div className="s-plan-col">
+      <PlanTabs plans={plans} />
       <section className="s-card s-plan" aria-label={S.planLabel}>
+        <PlanRow plans={plans} />
         {examples.length > 0 && (
           <div className="s-examples">
             <p className="s-examples-title">{S.tryOne}</p>
@@ -509,30 +555,30 @@ export default function SimpleView({ state, update, engine, theme, firstVisit, o
             <button type="button" className="btn btn--link" onClick={onExampleDone}>{S.ownQuestion}</button>
           </div>
         )}
+        <div className="s-divider" />
         <h2 className="s-lead">{S.iWant}</h2>
-        {views.map((v, i) => (
-          <BannerBlock key={i === 0 ? "first" : stagesOf(state)[i - 1].id} state={v} update={stageUpdate(update, i)} index={i}
-            count={views.length} fixed={fixed} carries={i > 0 && sharesPity(views[i - 1], v)} onRemove={() => update((s) => removeStage(s, i))}
-            pullsRow={!stacked ? pullsRow : null} />
-        ))}
-        <button type="button" className="btn btn--quiet btn--sm s-add s-add-banner" onClick={addBanner}>+ {G.addBanner}</button>
+        <BannerBlock key={sel === 0 ? "first" : stagesOf(state)[sel - 1]?.id} state={views[sel]} update={stageUpdate(update, sel)} index={sel}
+          fixed={fixed} carries={sel > 0 && sharesPity(views[sel - 1], views[sel])} pullsRow={!stacked ? pullsRow : null} />
         {stacked && (
           <>
             <div className="s-divider" />
-            <div className="s-row s-row--stack">
-              <span className="s-q" id="s-spend">{G.spendLabel}</span>
-              <span className="seg seg--sm" role="group" aria-labelledby="s-spend">
+            <div className="s-spend">
+              <div className="s-eyebrow-row">
+                <span className="s-eyebrow" id="s-spend">{G.spendLabel}</span>
+                <HelpButton label={G.spendLabel} text={G.spendHelp} />
+              </div>
+              <span className="seg seg--full" role="group" aria-labelledby="s-spend">
                 {[["shared", G.spendShared], ["fixed", G.spendFixed]].map(([v, label]) => (
                   <button key={v} type="button" aria-pressed={(state.spend ?? "shared") === v} className={(state.spend ?? "shared") === v ? "is-on" : ""}
                     onClick={() => update((s) => ({ ...s, spend: v, ...(v === "fixed" ? { mode: "budget" } : {}) }))}>{label}</button>
                 ))}
               </span>
-              <HelpButton label={G.spendLabel} text={G.spendHelp} />
             </div>
             {!fixed && pullsRow}
           </>
         )}
       </section>
+      </div>
       <div className="s-side">
         <Answer state={state} update={update} engine={engine} theme={theme} onDetails={onDetails} isSaved={isSaved}
           compare={compare} tab={tab} setTab={setTab} onCompare={() => { onCompare(); setTab("compare"); }} />

@@ -34,7 +34,6 @@ export function presets() {
       ]),
       // the first character and that character's own wheel
       goal: [row("0,0", "specific", 1), row("0,1", "specific", 1)],
-      budget: 600,
     };
   };
   return {
@@ -48,7 +47,6 @@ export function presets() {
         leaf(lc.rest, "rest"),
       ]),
       goal: [row("0,0", "total", 1)],
-      budget: 60,
     },
     limitedWheel: {
       ...P.limitedWheel,
@@ -60,7 +58,6 @@ export function presets() {
         leaf(lw.rest, "rest"),
       ]),
       goal: [row("0,0", "total", 1)],
-      budget: 40,
     },
     anniversary: {
       ...P.anniversary,
@@ -75,7 +72,6 @@ export function presets() {
         leaf(an.rest, "rest"),
       ]),
       goal: [row("0,0,0", "total", 1), row("0,0,1", "total", 1)],
-      budget: 150,
     },
     kaleido1: kaleido("kaleido1"),
     kaleido2: kaleido("kaleido2"),
@@ -96,13 +92,61 @@ export function withPresetNames(state) {
     const p = presets()[b.preset];
     if (!p) return b;
     if (!sameShape(b.banner, p.banner)) return null;
-    return { ...b, banner: structuredClone(p.banner) };
+    // names you gave (Edit names) stay over the language's own
+    return { ...b, banner: applyNames(p.banner, b.names) };
   };
   // the other banners of the plan get their names too (one whose preset changed shape starts fresh)
   const stages = stagesOf(state).map((st) => named(st) ?? newStage(st.preset));
   const first = named(state);
   if (!first) return { ...freshState(state.preset), mode: state.mode, desired: state.desired, chartLines: state.chartLines, stages, spend: state.spend ?? "shared" };
   return stages.length ? { ...first, stages } : first;
+}
+
+// ── Your own names for a built-in banner ──
+// A plan can have a name of its own (title) and its own names for outcomes and items, kept as
+// overrides (names: { o: { path: name }, i: { path: [item names] } }) on top of the preset's names,
+// so the banner stays that built-in banner (its pity still carries over to the next one) and the
+// names you didn't change still follow the language.
+export function applyNames(tree, names) {
+  const out = structuredClone(tree);
+  if (!names) return out;
+  for (const [key, name] of Object.entries(names.o ?? {})) {
+    const a = safeAlt(out, key);
+    if (a && typeof name === "string" && name.trim()) a.name = name.trim();
+  }
+  for (const [key, list] of Object.entries(names.i ?? {})) {
+    const a = safeAlt(out, key);
+    if (a && Array.isArray(list)) {
+      const base = itemNames(a);
+      a.items = base.map((x, k) => cleanItem(list[k]) || x).join(", ");
+    }
+  }
+  return out;
+}
+// item names are kept as one comma-separated text, so a name can't hold a comma
+export const cleanItem = (x) => String(x ?? "").replace(/,/g, " ").replace(/\s+/g, " ").trim();
+function safeAlt(tree, key) {
+  try { return altAt(tree, key) ?? null; } catch { return null; }
+}
+// The overrides that make preset tree "base" read as "named" (empty: null)
+export function namesDiff(base, named) {
+  const o = {}, i = {};
+  const b = allAlts(base), n = allAlts(named);
+  b.forEach((x, k) => {
+    const y = n[k];
+    if (!y || y.key !== x.key) return;
+    if ((y.alt.name ?? "").trim() && y.alt.name.trim() !== x.alt.name) o[x.key] = y.alt.name.trim();
+    if (x.isPool) {
+      const a = itemNames(x.alt), c = itemNames(y.alt);
+      if (c.some((nm, j) => nm !== a[j])) i[x.key] = c;
+    }
+  });
+  return Object.keys(o).length || Object.keys(i).length ? { ...(Object.keys(o).length ? { o } : {}), ...(Object.keys(i).length ? { i } : {}) } : null;
+}
+// What a plan is called: its own name, else its banner's
+export function planTitle(v) {
+  const own = String(v?.title ?? "").trim();
+  return own || (presets()[v?.preset]?.title ?? getStrings().app.customBanner);
 }
 
 // ── Several banners in one plan ──
@@ -121,13 +165,13 @@ export function newStage(key) {
 export function stageView(state, i) {
   if (!i) return state;
   const st = stagesOf(state)[i - 1];
-  return { ...state, preset: st.preset, banner: st.banner, goal: st.goal, goalMode: st.goalMode ?? "all", start: st.start, budget: st.pulls, stageIndex: i };
+  return { ...state, preset: st.preset, banner: st.banner, goal: st.goal, goalMode: st.goalMode ?? "all", start: st.start, budget: st.pulls, title: st.title ?? "", names: st.names ?? null, stageIndex: i };
 }
 // …and an edit of that view written back into the plan
 export function writeStage(state, i, view) {
   if (!i) return view;
   const stages = stagesOf(state).slice();
-  stages[i - 1] = { ...stages[i - 1], preset: view.preset, banner: view.banner, goal: view.goal, goalMode: view.goalMode, start: view.start, pulls: view.budget };
+  stages[i - 1] = { ...stages[i - 1], preset: view.preset, banner: view.banner, goal: view.goal, goalMode: view.goalMode, start: view.start, pulls: view.budget, title: view.title ?? "", names: view.names ?? null };
   // what the editors may change besides the banner: the plan-wide fields
   return { ...state, stages, mode: view.mode, desired: view.desired, chartLines: view.chartLines };
 }
@@ -146,7 +190,7 @@ export function removeStage(state, i) {
   if (!stages.length) return state;
   if (i > 0) return { ...state, stages: stages.filter((_, k) => k !== i - 1) };
   const [second, ...rest] = stages;
-  return { ...state, preset: second.preset, banner: second.banner, goal: second.goal, goalMode: second.goalMode ?? "all", start: second.start, budget: state.spend === "fixed" ? second.pulls : state.budget, stages: rest };
+  return { ...state, preset: second.preset, banner: second.banner, goal: second.goal, goalMode: second.goalMode ?? "all", start: second.start, budget: state.spend === "fixed" ? second.pulls : state.budget, title: second.title ?? "", names: second.names ?? null, stages: rest };
 }
 
 // Banners whose pity carries over from one to the next: built-in banners of the same type (the
@@ -174,7 +218,6 @@ export function customTemplate() {
       leaf(n.rest, "rest"),
     ]),
     goal: [row("0,0", "total", 1)],
-    budget: 200,
   };
 }
 
@@ -191,8 +234,9 @@ export function freshState(key) {
     goal: p.goal.map((g) => ({ ...g, id: newId() })),
     goalMode: "all",
     start: { pity: {}, streak: {} },
-    mode: "budget",
-    budget: p.budget,
+    // no pulls typed in: the answer starts as "how many pulls it takes"
+    mode: "pulls",
+    budget: 0,
     desired: 90,
     settings: { ...DEFAULT_SETTINGS },
     chartLines: { ...DEFAULT_LINES },

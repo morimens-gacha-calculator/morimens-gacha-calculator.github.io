@@ -2,7 +2,7 @@
 // the address after "#s=", so nothing is sent to the server. An unchanged built-in banner is
 // stored by its key only (short links; names in the reader's language); an edited or custom
 // banner is stored in full. Settings are not shared: they're the reader's own, for every banner.
-import { fmtInt, fmtNum, fmtPct, freshState, fromEngineTree, newId, presets, reqLabel, stagesOf, stageView } from "./model.js";
+import { applyNames, fmtInt, fmtNum, fmtPct, freshState, fromEngineTree, newId, planTitle, presets, reqLabel, stagesOf, stageView } from "./model.js";
 
 const VERSION = 2; // 1: banner in the editor's own form (still read)
 
@@ -65,7 +65,9 @@ const ROW_DEFAULTS = { type: "total", item: 0, k: 1, copies: 1, from: "" };
 // One banner of the plan: its banner (a built-in one by key), goals, goal mode and pity
 function bannerPayload(state) {
   const preset = presets()[state.preset];
-  const unchanged = preset && JSON.stringify(state.banner) === JSON.stringify(preset.banner);
+  // a built-in banner with only your own names (Edit names) is still that banner: its key and the names
+  const names = preset && state.names ? state.names : null;
+  const unchanged = preset && JSON.stringify(state.banner) === JSON.stringify(applyNames(preset.banner, names));
   const rows = state.goal.map((row) => {
     const out = {};
     for (const [k, v] of Object.entries(row)) if (k !== "id" && v != null && JSON.stringify(v) !== JSON.stringify(ROW_DEFAULTS[k])) out[k] = v;
@@ -80,6 +82,8 @@ function bannerPayload(state) {
     g: rows,
     ...(state.goalMode === "any" ? { gm: "any" } : {}),
     ...(Object.keys(start).length ? { s: start } : {}),
+    ...(String(state.title ?? "").trim() ? { t: String(state.title).trim() } : {}),
+    ...(unchanged && names ? { n: names } : {}),
   };
 }
 // The whole plan: banner 1 at the top level (as links have always had it), the other banners in
@@ -150,9 +154,12 @@ function bannerFromPayload(p, version) {
   if (p.b && version === VERSION) p.b = unpackBanner(p.b, presetPools());
   if (!known && !(p.b && Array.isArray(p.b.alts))) throw new Error("no banner");
   const base = freshState(known && !p.b ? p.p : "custom");
+  const names = known && !p.b && p.n && typeof p.n === "object" ? { o: p.n.o ?? undefined, i: p.n.i ?? undefined } : null;
   return {
     preset: known && !p.b ? p.p : "custom",
-    banner: p.b ?? base.banner,
+    banner: p.b ?? applyNames(base.banner, names),
+    ...(typeof p.t === "string" && p.t.trim() ? { title: p.t.trim().slice(0, 80) } : {}),
+    ...(names ? { names } : {}),
     goal: p.g.map((row) => ({ ...ROW_DEFAULTS, ...row, id: newId() })),
     goalMode: p.gm === "any" ? "any" : "all",
     start: { ...base.start, ...(p.s && typeof p.s === "object" ? p.s : {}) },
@@ -165,7 +172,7 @@ function bannerFromPayload(p, version) {
 // ("<0.01% with 25 pulls (average 13,600.08)"), for the copied text and the preview card
 export function shareParts(state, result, T) {
   const one = (v) => {
-    const banner = presets()[v.preset]?.title ?? T.app.customBanner;
+    const banner = planTitle(v);
     const goals = v.goal.map((g) => reqLabel(v.banner, g)).join(v.goalMode === "all" ? T.goalLabel.joinAll : T.goalLabel.joinAny);
     return `${banner} · ${goals}`;
   };

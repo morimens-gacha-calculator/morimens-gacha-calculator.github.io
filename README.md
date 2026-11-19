@@ -50,7 +50,7 @@ test fails) and on pull requests.
 | `src/model.js` | Editor model ↔ engine format, presets, building queries |
 | `src/share.js` | Shareable links (the setup packed after `#s=`) |
 | `src/export.js` | CSV and chart image downloads |
-| `src/components/` | UI: preset nav, setup card (pity / banner rules / settings), pull plan, question, chart, stats, tables |
+| `src/components/` | UI: `PlanCard.jsx` and `AnswerCard.jsx` (the two cards, the same in both views), the banner plan tabs, goals and pity questions (simple view), plan rows and pity table (full view), chart, comparison, dialogs (Edit names, Banner rules, Settings) |
 | `src/styles.css` | All styling (colour tokens at the top) |
 | `src/i18n/en.js` | Every piece of interface text |
 | `src/site.config.js` | Background images (one per view), default preset, and the footer's site name, banner patch version and "Source code" link (`SOURCE_URL`) |
@@ -110,20 +110,39 @@ one block of shared component styles at the end of the same file. A few rules ke
   `.btn--quiet` (text only) and icon buttons. One-of-a-few choices use the segmented switch.
 - Fonts are served by the site itself (`src/main.jsx`): Inter for everything, JetBrains Mono for the
   banner data editor.
+- Both views are one page: a plan card (banner plan switch, banner row, I want · Pity · Your
+  pulls) and an answer card (This plan | Comparison, the answer, tiles, each banner plan, chart).
+  The full view shows more inside the same cards (plan rows, pity table, its own tiles, the chart
+  switch and Lines, tables); it never adds cards of its own. Settings (for every plan) open from
+  the header; Banner rules and Import / Export from the full view's "⋯" menu.
+- New plans start without pulls typed in: the answer is then how many pulls the goal takes.
 
 ## Several banners in one plan
 
-A plan can have more than one banner ("+ Add another banner" in the simple view, the banner tabs
-in the full view). Pulls are spent in one of two ways:
+A plan can have more than one banner plan: the "Banner plan 1 | Banner plan 2 | + Add banner plan"
+tabs, the same in both views (`src/components/PlanTabs.jsx`). Each plan has one row: its banner, a
+"?" with the banner's description and a "⋯" menu (Edit names, Reset this plan, Remove). Share, in
+the header, is for the whole plan. Pulls are spent in one of two ways:
 
-- **One budget** (default): pull on banner 1 until its goal is met, then banner 2 with what's
-  left, and so on. The answer is the full distribution of the total number of pulls.
-- **Each banner its own**: every banner gets its own pulls; the answer is the chance that every
-  banner's goal is met with its pulls.
+- **One budget** (default): pull on banner plan 1 until its goal is met, then banner plan 2 with
+  what's left, and so on. The answer is the full distribution of the total number of pulls.
+- **Each banner plan its own**: every plan gets its own pulls; the answer is the chance that every
+  plan's goal is met with its pulls, and for each plan its chance, the pulls it takes on average and
+  by when 9 in 10 are done (however many pulls it gets, given the plans before it were done), with a
+  chart of each plan's chance by the pulls put into it.
 
 Banners of the same type continue each other's pity and guarantees, exactly where the previous
 banner left them when its goal was met (`src/engine/staged.js`, using the chain's end states). Which
 built-in banners count as the same type is set in `PITY_TYPE` in `src/model.js` (the two Kaleido
 banners share one type); other banners each are their own type, and custom banners never share.
-Banner 1 is stored as the plan itself and the others in `stages`, so plans, links and comparisons
-from before still open unchanged.
+Banner plan 1 is stored as the plan itself and the others in `stages`, so plans, links and
+comparisons from before still open unchanged.
+
+**Edit names** gives a plan a name of its own (`title`) and its own names for outcomes and items.
+For a built-in banner they are kept as overrides (`names: { o: { path: name }, i: { path: [names] } }`,
+see `applyNames` in `src/model.js`), so the banner stays that built-in banner: its pity still carries
+over, links stay short, and the names you didn't change still follow the language.
+
+In the simple view, a goal that counts more than one outcome ("any SSR", "any limited SSR", "different
+characters") has a "?" that says what it counts, how often it comes up and its guarantee. The text is
+written from the banner itself, so it fits custom banners and renamed ones too.

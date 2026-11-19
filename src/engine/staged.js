@@ -12,7 +12,9 @@
 //   each stage's goal is met (doneCdf[t] = P(stages 1…k all met within t pulls)).
 // spend "fixed": stage k gets budgets[k] pulls of its own (pulls left over aren't moved on). The
 //   result: chanceAll and, per stage, its chance given the stages before it were met, and its
-//   curve over its own pulls (curve[n] = P(met within n pulls on that banner | reached it)).
+//   curve over its own pulls (curve[n] = P(met within n pulls on that banner | reached it)), and
+//   own: how many pulls it takes however many it gets (cdf, mean, min, max, median, p90), given the
+//   stages before it were met with their pulls.
 import { compile } from "./chain.js";
 import { makeStepper } from "./chain-step.js";
 import { expandSubsets, mergeNamedRows } from "./goal.js";
@@ -98,7 +100,7 @@ function stageEnds(stage, start, { eps, maxPulls, maxStates }) {
 // Pulls to meet the stage's goal from one start (any method; exact): { pmf, min, max, cdf, tail }
 function stageWait(stage, start, { eps, maxPulls, maxStates, method }) {
   const r = solve({ tree: stage.tree, goal: stage.goal, goalMode: stage.goalMode, start, eps, maxPulls, maxStates, method, percentiles: [] });
-  return { pmf: r.pmf, cdf: r.cdf, tail: r.tail, min: r.min, max: r.max, method: r.method };
+  return { pmf: r.pmf, cdf: r.cdf, tail: r.tail, mean: r.mean, min: r.min, max: r.max, method: r.method };
 }
 
 function checkStages(stages) {
@@ -156,6 +158,13 @@ function fixedStages(stages, budgets, opts, onProgress) {
     const next = new Map();
     let met = 0;
     let curve = new Float64Array(B + 1);
+    // the stage's own wait, however many pulls it takes (given the stages before it were met):
+    // its distribution, average and ends, for "pulls it takes on average" and its chart
+    let own = new Float64Array(0), ownMean = 0, ownTail = 0, ownMin = null, ownMax = 0;
+    const ownEnds = (min, max) => {
+      if (min != null) ownMin = ownMin == null ? min : Math.min(ownMin, min);
+      ownMax = ownMax == null || max == null ? null : Math.max(ownMax, max);
+    };
     for (const f of frontier) {
       const start = withMemory(stage.start ?? {}, stage.shares ? f.memory : null);
       const w = f.mass / (reached || 1);
@@ -163,6 +172,9 @@ function fixedStages(stages, budgets, opts, onProgress) {
         for (const e of stageEnds(stage, start, opts)) {
           let run = 0;
           for (let t = 0; t <= B; t++) { run += e.pmf[t] ?? 0; curve[t] += w * run; }
+          own = addInto(own, Float64Array.from(e.pmf, (v) => w * v));
+          for (let t = 0; t < e.pmf.length; t++) ownMean += w * t * e.pmf[t];
+          ownEnds(e.min, e.max);
           if (run <= NEGLIGIBLE_MASS) continue;
           const key = memoryKey(e.start);
           const mass = f.mass * run;
@@ -170,15 +182,25 @@ function fixedStages(stages, budgets, opts, onProgress) {
           const had = next.get(key);
           if (had) had.mass += mass; else next.set(key, { memory: e.start, mass });
         }
+        ownTail = Math.max(0, 1 - total(own));
       } else {
         const r = stageWait(stage, start, opts);
         const at = (t) => (t < r.cdf.length ? r.cdf[t] : 1 - r.tail);
         for (let t = 0; t <= B; t++) curve[t] += w * at(t);
         met += f.mass * at(B);
+        own = addInto(own, Float64Array.from(r.pmf, (v) => w * v));
+        ownMean += w * r.mean;
+        ownTail += w * (r.tail ?? 0);
+        ownEnds(r.min, r.max);
       }
     }
     curve = Float64Array.from(curve, (v) => Math.min(1, Math.max(0, v)));
-    out.push({ budget: B, chance: reached > 0 ? Math.min(1, met / reached) : 0, reached: Math.min(1, reached), curve });
+    const ownCdf = cdfOf(own, ownMin, ownMax);
+    const ownAt = (q) => { for (let i = 0; i < ownCdf.length; i++) if (ownCdf[i] >= q - PERCENTILE_SLACK) return i; return null; };
+    out.push({
+      budget: B, chance: reached > 0 ? Math.min(1, met / reached) : 0, reached: Math.min(1, reached), curve,
+      ...(reached > 0 ? { own: { cdf: ownCdf, tail: ownTail, mean: ownMean, min: ownMin, max: ownMax, median: ownAt(0.5), p90: ownAt(0.9) } } : {}),
+    });
     frontier = nextShares ? [...next.values()] : [{ memory: null, mass: met }];
   }
   return { stages: out, chanceAll: out.length ? Math.min(1, out[out.length - 1].reached * out[out.length - 1].chance) : 0 };
@@ -228,7 +250,12 @@ export function solveStages({
     min: last.min, minKnown: true, max: last.max, maxKnown: true,
     tail, pmf, cdf,
     // per stage: P(this stage and the ones before it are met within t pulls)
-    stages: doneCurves.map((d, k) => ({ cdf: stageCdfs[k], min: d.min, max: d.max, mean: (() => { let s = 0; d.pmf.forEach((v, t) => (s += t * v)); return s; })() })),
+    // (and when 9 in 10 are done with it: p90)
+    stages: doneCurves.map((d, k) => ({
+      cdf: stageCdfs[k], min: d.min, max: d.max,
+      mean: (() => { let s = 0; d.pmf.forEach((v, t) => (s += t * v)); return s; })(),
+      p90: (() => { const c = stageCdfs[k]; for (let i = 0; i < c.length; i++) if (c[i] >= 0.9 - PERCENTILE_SLACK) return i; return null; })(),
+    })),
     budget: budget == null ? null : {
       pulls: budget, chanceGoal: chanceBy(cdf, budget),
       stages: stageCdfs.map((c) => chanceBy(c, budget)),

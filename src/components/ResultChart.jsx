@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Chart as ChartJS, LinearScale, PointElement, LineElement, Filler, Tooltip, Legend } from "chart.js";
 import { Line } from "react-chartjs-2";
-import { fmtInt, fmtNum, fmtPct, listOfInts, DEFAULT_LINES, getPrecision, presets, reqLabel } from "../model.js";
+import { fmtInt, fmtNum, fmtPct, listOfInts, DEFAULT_LINES, getPrecision, planTitle, reqLabel } from "../model.js";
 import { useT } from "../i18n/index.js";
 import NumberInput from "./NumberInput.jsx";
-import Progress from "./Progress.jsx";
 import { budgetRows, chanceByPullRows, downloadChartPng, downloadCsv, fileName } from "../export.js";
 
 ChartJS.register(LinearScale, PointElement, LineElement, Filler, Tooltip, Legend);
@@ -126,8 +125,7 @@ export function sample(values, xMax, max = 900) {
 
 // simple: the simple view's chart: chance by pull only, with the lines its answer mentions
 // (your pulls, average, half, 9 in 10, earliest and guaranteed by), no menus
-// children (simple view only): buttons shown in a row under the chart, next to Export
-export default function ResultChart({ state, update, engine, theme, simple = false, children }) {
+export default function ResultChart({ state, update, engine, theme, simple = false }) {
   const T = useT();
   const L = T.chart;
   const [view, setView] = useState("cdf");
@@ -209,18 +207,21 @@ export default function ResultChart({ state, update, engine, theme, simple = fal
 
   return (
     <div className={`chart-wrapper ${simple ? "is-simple" : ""}`}>
-      {!simple && <div className="chart-toolbar">
-        <div className="chart-tabs" role="tablist" aria-label={L.tabs}>
-          {views.map(([v, label]) => (
-            <button key={v} type="button" role="tab" aria-selected={active === v} className={`chip-tab ${active === v ? "is-active" : ""}`} onClick={() => setView(v)}>{label}</button>
-          ))}
-        </div>
+      {/* above the chart in both views: the full view's chart switch and Lines; Export */}
+      <div className="chart-toolbar">
+        {!simple ? (
+          <div className="seg chart-tabs" role="tablist" aria-label={L.tabs}>
+            {views.map(([v, label]) => (
+              <button key={v} type="button" role="tab" aria-selected={active === v} className={active === v ? "is-on" : ""} onClick={() => setView(v)}>{label}</button>
+            ))}
+          </div>
+        ) : <span />}
         <div className="row toolbar-menus">
-          <LinesMenu lines={lines} setLines={setLines} pctOptions={pctOptions} hasWorst={r?.max != null} worstUnknown={r?.maxKnown === false} mode={state.mode}
-          showBest={state.settings.showBest !== false} showWorst={state.settings.showWorst !== false} hasBest={r?.min != null} />
+          {!simple && <LinesMenu lines={lines} setLines={setLines} pctOptions={pctOptions} hasWorst={r?.max != null} worstUnknown={r?.maxKnown === false} mode={state.mode}
+            showBest={state.settings.showBest !== false} showWorst={state.settings.showWorst !== false} hasBest={r?.min != null} />}
           <ExportMenu result={engine.status === "busy" ? null : r} chartRef={chartRef} state={state} viewName={views.find(([v]) => v === active)?.[1]} />
         </div>
-      </div>}
+      </div>
       <div className="chart-container">
         {chart && (
           <Line
@@ -242,15 +243,8 @@ export default function ResultChart({ state, update, engine, theme, simple = fal
             }}
           />
         )}
-        {engine.status === "busy" && <div className="loading-overlay"><Progress engine={engine} /></div>}
       </div>
       {phone && chart && <MarkerKey items={chart.markers} />}
-      {simple && (
-        <div className="s-actions">
-          {children}
-          <ExportMenu result={engine.status === "busy" ? null : r} chartRef={chartRef} state={state} viewName={L.cdf} buttonClass="btn" up />
-        </div>
-      )}
     </div>
   );
 }
@@ -271,13 +265,13 @@ export function usePopup() {
 }
 
 // "Export ▾": the numbers as CSV (for spreadsheets) and the chart as a PNG image
-function ExportMenu({ result, chartRef, state, viewName, buttonClass = "chip-tab", up = false }) {
+function ExportMenu({ result, chartRef, state, viewName, buttonClass = "btn btn--sm", up = false }) {
   const L = useT().chart;
   const { open, setOpen, ref } = usePopup();
 
   const run = (fn) => { setOpen(false); fn(); };
   const T = useT();
-  const title = presets()[state.preset]?.title ?? T.app.customBanner;
+  const title = planTitle(state);
   const image = () => {
     const cs = getComputedStyle(document.documentElement);
     const v = (n, d) => cs.getPropertyValue(n).trim() || d;
@@ -311,7 +305,7 @@ function LinesMenu({ lines, setLines, pctOptions, hasWorst, worstUnknown, mode, 
 
   return (
     <div className="lines-menu" ref={ref}>
-      <button type="button" className="chip-tab" aria-expanded={open} onClick={() => setOpen((o) => !o)}>{L.lines} ▾</button>
+      <button type="button" className="btn btn--sm" aria-expanded={open} onClick={() => setOpen((o) => !o)}>{L.lines} ▾</button>
       {open && (
         <div className="lines-pop" role="dialog" aria-label={L.linesTitle}>
           <div className="lines-title">{L.linesTitle}</div>

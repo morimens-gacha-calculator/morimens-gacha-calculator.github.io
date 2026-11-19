@@ -65,6 +65,32 @@ test("fixed pulls, guaranteed in time: chance exactly 1", () => {
   assert.equal(r.chanceAll, 1);
 });
 
+// Each banner plan's own wait, however many pulls it takes
+test("fixed pulls: each banner's own wait (independent: the banner alone)", () => {
+  const a = bannerQuery("limitedChar"), b = bannerQuery("limitedWheel");
+  const r = solveStages({ stages: [a, b], spend: "fixed", budgets: [60, 40] });
+  const rb = solve(b);
+  assertClose(r.stages[1].own.mean, rb.mean, 1e-12);
+  assert.ok(maxDiff(r.stages[1].own.cdf, rb.cdf) < 1e-12);
+  assert.equal(r.stages[1].own.min, rb.min);
+  assert.equal(r.stages[1].own.max, rb.max);
+  assert.equal(r.stages[1].own.p90, rb.cdf.findIndex((v) => v >= 0.9 - 1e-12));
+});
+test("fixed pulls, shared pity: the second banner's own wait = (1 + 1) minus the first", () => {
+  const a = bannerQuery("limitedChar");
+  const r = solveStages({ stages: [a, { ...a, shares: true }], spend: "fixed", budgets: [90, 90] });
+  const one = solve(a), two = solve(bannerQuery("limitedChar", [{ path: "0,0", copies: 2 }]));
+  assertClose(r.stages[0].own.mean, one.mean, 1e-12);
+  assertClose(r.stages[1].own.mean, two.mean - one.mean, 1e-9);
+  assert.ok(r.stages[1].own.max <= one.max);
+});
+test("one budget: per banner, done by pull on average and 9 in 10", () => {
+  const a = bannerQuery("limitedChar"), b = bannerQuery("limitedWheel");
+  const r = solveStages({ stages: [a, b] });
+  assertClose(r.stages[0].mean, solve(a).mean, 1e-9);
+  assert.equal(r.stages[1].p90, r.percentiles.p90);
+});
+
 // Which banners share pity, from the plan
 test("same type shares pity, other types don't", () => {
   const q = buildQuery({ ...freshState("limitedChar"), stages: [newStage("limitedChar"), newStage("limitedWheel"), newStage("limitedWheel")] });

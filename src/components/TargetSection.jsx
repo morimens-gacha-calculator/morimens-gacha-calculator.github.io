@@ -6,7 +6,7 @@ import { fmtInt, fmtPct } from "../model.js";
 // The two questions: chance from a budget, or pulls for a chance.
 // Input on the left, answer on the right, both the same height with their units inside.
 // Several banners in one plan: stacked shows how the pulls are spent (one budget, or each banner its
-// own). With each banner on its own pulls there's no "pulls needed": the field is the pulls of the
+// own). With each banner plan on its own pulls there's no "pulls needed": the field is the pulls of the
 // selected banner (stage: { index, view, update }) and the answer is the chance for the whole plan.
 export default function TargetSection({ state, update, engine, stacked = false, stage = null }) {
   const T = useT();
@@ -30,14 +30,16 @@ export default function TargetSection({ state, update, engine, stacked = false, 
     <section className="target-section" aria-label={L.label}>
       {stacked && (
         <div className="target-spend">
-          <span className="field-label" id="t-spend">{G.spendLabel}</span>
+          <div className="s-eyebrow-row">
+            <span className="field-label" id="t-spend">{G.spendLabel}</span>
+            <HelpButton label={G.spendLabel} text={G.spendHelp} />
+          </div>
           <div className="mode-toggle" role="group" aria-labelledby="t-spend">
             {[["shared", G.spendShared], ["fixed", G.spendFixed]].map(([v, label]) => (
               <button key={v} type="button" aria-pressed={(state.spend ?? "shared") === v} className={`mode-tab ${(state.spend ?? "shared") === v ? "is-active" : ""}`}
                 onClick={() => update((s) => ({ ...s, spend: v, ...(v === "fixed" ? { mode: "budget" } : {}) }))}>{label}</button>
             ))}
           </div>
-          <HelpButton label={G.spendLabel} text={G.spendHelp} />
         </div>
       )}
       {!fixed && <div className="target-header">
