@@ -20,9 +20,9 @@ import { fft } from "./renewal.js";
 import { solve } from "./banner-engine.js";
 import { stopIfCancelled } from "./cancel.js";
 import { EngineError } from "./errors.js";
-import { DEFAULT_EPS, DEFAULT_MAX_PULLS, DEFAULT_MAX_STATES, PERCENTILE_SLACK, TINY_CHANCE } from "./settings.js";
+import { DEFAULT_EPS, DEFAULT_MAX_PULLS, DEFAULT_MAX_STATES, FFT_ROUNDING, NEGLIGIBLE, PERCENTILE_SLACK } from "./settings.js";
 
-const NEGLIGIBLE_MASS = 1e-15;   // a way of ending a stage less likely than this is left out
+const NEGLIGIBLE_MASS = NEGLIGIBLE; // a way of ending a stage less likely than this is left out
 const DIRECT_CONV_MAX = 4e6;     // products below this: plain convolution (exact zeros stay zeros)
 
 // a + b of two lengths that may be unknown (null = can go on forever)
@@ -52,7 +52,7 @@ export function convolve(a, b) {
   }
   fft(ar, ai, true);
   // FFT rounding leaves ~1e-16 where the true value is 0: clear it
-  return Float64Array.from(ar.subarray(0, n), (v) => (v < 1e-17 ? 0 : v));
+  return Float64Array.from(ar.subarray(0, n), (v) => (v < FFT_ROUNDING ? 0 : v));
 }
 
 const addInto = (acc, x) => {

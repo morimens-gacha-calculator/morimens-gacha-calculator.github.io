@@ -506,6 +506,8 @@ export default {
     tooFewItems: (n, k) => `Only ${n} items are chosen, so ${k} different ones are impossible.`,
     engine: {
       // where: outcome names like "SSR › character"; empty means the banner's top level
+      noStages: () => "The plan has no banners. Add at least one.",
+      firstShares: () => "The first banner of a plan can't continue another banner's pity.",
       badChance: (v) => `${place(v.where)}: chance "${v.value}" isn't a number. Use 0.5, 1/2, 50% or rest.`,
       noOutcomes: (v) => `${place(v.where)} has no outcomes. Add at least one.`,
       badCount: (v) => `${place(v.where)}: the number of items must be a whole number, 1 or more.`,

@@ -14,6 +14,7 @@ export const eventTolerance = (eps) => eps / 10;    // the walk over events (SSR
 // Chances this small are treated as 0: the chance-left curve once it gets there, numbers of
 // events that can't fit into a budget, rows that are certain to be maxed out.
 export const NEGLIGIBLE = 1e-15;
+export const FFT_ROUNDING = 1e-17;          // staged.js: an FFT convolution value below this is a true 0 (rounding)
 // A budget row counts as maxed out (its progress can't change any more) when the chance it isn't
 // is below this.
 export const MAXED_OUT = 1e-14;
