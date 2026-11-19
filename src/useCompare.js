@@ -39,7 +39,8 @@ export function useCompare(items, lang) { // eslint-disable-line no-unused-vars
         finish(it, key, { status: "error", error: e.message || getStrings().errors.crashed });
         runNext(worker);
       };
-      worker.postMessage({ id: 1, mode: "budget", ...query, budget: null, threads: false });
+      // a comparison plots chance by total pulls: plans with several banners spend one shared budget there
+      worker.postMessage({ id: 1, mode: "budget", ...query, ...(query.stages ? { spend: "shared" } : {}), budget: null, threads: false });
     };
     for (let w = 0; w < parallel; w++) {
       const worker = new Worker(new URL("./engine/engine.worker.js", import.meta.url), { type: "module" });

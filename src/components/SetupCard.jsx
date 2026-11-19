@@ -5,7 +5,9 @@ import { HelpButton } from "./Help.jsx";
 import BannerEditor from "./BannerEditor.jsx";
 import { allAlts, allNodes, num, DEFAULT_SETTINGS } from "../model.js";
 
-export default function SetupCard({ state, update, setState, setSettings, tabRequest }) {
+// pityFrom: this banner continues the pity of banner n (several banners in one plan), so the
+// Pity tab says so instead of asking for counters
+export default function SetupCard({ state, update, setState, setSettings, tabRequest, pityFrom = null }) {
   const T = useT();
   const S = T.setup;
   // Pity and Banner rules belong to this banner; Settings (set apart on the right) to every banner
@@ -60,7 +62,9 @@ export default function SetupCard({ state, update, setState, setSettings, tabReq
         <HelpButton label={current.label} text={current.help} />
       </div>
       <div className={`tab-content is-${tab}`} role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
-        {tab === "pity" && <PityPanel state={state} update={update} />}
+        {tab === "pity" && (pityFrom
+          ? <p className="note-box">{T.stages.carriesHelp(pityFrom)}</p>
+          : <PityPanel state={state} update={update} />)}
         {tab === "banner" && <BannerEditor state={state} update={update} />}
         {tab === "settings" && <SettingsPanel settings={state.settings} setSettings={setSettings} />}
       </div>

@@ -2,7 +2,7 @@
 // the address after "#s=", so nothing is sent to the server. An unchanged built-in banner is
 // stored by its key only (short links; names in the reader's language); an edited or custom
 // banner is stored in full. Settings are not shared: they're the reader's own, for every banner.
-import { fmtInt, fmtNum, fmtPct, freshState, fromEngineTree, newId, presets, reqLabel } from "./model.js";
+import { fmtInt, fmtNum, fmtPct, freshState, fromEngineTree, newId, presets, reqLabel, stagesOf, stageView } from "./model.js";
 
 const VERSION = 2; // 1: banner in the editor's own form (still read)
 
@@ -62,7 +62,8 @@ function unpackBanner(raw, pools) {
 }
 const ROW_DEFAULTS = { type: "total", item: 0, k: 1, copies: 1, from: "" };
 
-function payloadOf(state) {
+// One banner of the plan: its banner (a built-in one by key), goals, goal mode and pity
+function bannerPayload(state) {
   const preset = presets()[state.preset];
   const unchanged = preset && JSON.stringify(state.banner) === JSON.stringify(preset.banner);
   const rows = state.goal.map((row) => {
@@ -74,13 +75,23 @@ function payloadOf(state) {
   });
   const start = Object.fromEntries(Object.entries(state.start ?? {}).filter(([, v]) => v && Object.keys(v).length));
   return {
-    v: VERSION,
     p: unchanged ? state.preset : "custom",
     ...(unchanged ? {} : { b: packBanner(state.banner, presetPools()) }),
     g: rows,
     ...(state.goalMode === "any" ? { gm: "any" } : {}),
     ...(Object.keys(start).length ? { s: start } : {}),
+  };
+}
+// The whole plan: banner 1 at the top level (as links have always had it), the other banners in
+// "st" with their own pulls ("bu"), and "sp": "fixed" when each banner has its own pulls
+function payloadOf(state) {
+  const stages = stagesOf(state);
+  return {
+    v: VERSION,
+    ...bannerPayload(state),
     ...(state.mode === "pulls" ? { m: "pulls", d: state.desired } : { bu: state.budget }),
+    ...(stages.length ? { st: stages.map((_, k) => { const v = stageView(state, k + 1); return { ...bannerPayload(v), bu: v.budget }; }) } : {}),
+    ...(stages.length && state.spend === "fixed" ? { sp: "fixed" } : {}),
   };
 }
 
@@ -116,21 +127,35 @@ export async function decodeSetup(code) {
   if (!json) throw new Error("unknown link format");
   const p = JSON.parse(new TextDecoder().decode(json));
   if (!p || (p.v !== 1 && p.v !== VERSION) || !Array.isArray(p.g)) throw new Error("not a setup");
+  const first = bannerFromPayload(p, p.v);
+  const stages = Array.isArray(p.st) ? p.st.map((x) => {
+    if (!x || !Array.isArray(x.g)) throw new Error("not a setup");
+    const b = bannerFromPayload(x, VERSION);
+    return { id: newId(), ...b, pulls: Number.isFinite(x.bu) ? x.bu : freshState(b.preset).budget };
+  }) : [];
+  const base = freshState(first.preset);
+  return {
+    ...base,
+    ...first,
+    mode: p.m === "pulls" ? "pulls" : "budget",
+    budget: Number.isFinite(p.bu) ? p.bu : base.budget,
+    desired: Number.isFinite(p.d) ? p.d : base.desired,
+    stages,
+    spend: p.sp === "fixed" && stages.length ? "fixed" : "shared",
+    // settings are the reader's own (they're shared by every banner), so a link doesn't carry them
+  };
+}
+function bannerFromPayload(p, version) {
   const known = presets()[p.p];
-  if (p.b && p.v === VERSION) p.b = unpackBanner(p.b, presetPools());
+  if (p.b && version === VERSION) p.b = unpackBanner(p.b, presetPools());
   if (!known && !(p.b && Array.isArray(p.b.alts))) throw new Error("no banner");
   const base = freshState(known && !p.b ? p.p : "custom");
   return {
-    ...base,
     preset: known && !p.b ? p.p : "custom",
     banner: p.b ?? base.banner,
     goal: p.g.map((row) => ({ ...ROW_DEFAULTS, ...row, id: newId() })),
     goalMode: p.gm === "any" ? "any" : "all",
     start: { ...base.start, ...(p.s && typeof p.s === "object" ? p.s : {}) },
-    mode: p.m === "pulls" ? "pulls" : "budget",
-    budget: Number.isFinite(p.bu) ? p.bu : base.budget,
-    desired: Number.isFinite(p.d) ? p.d : base.desired,
-    // settings are the reader's own (they're shared by every banner), so a link doesn't carry them
   };
 }
 
@@ -139,15 +164,20 @@ export async function decodeSetup(code) {
 // The two halves: what's set up ("Kaleido banner (Arc 2) · Arachne ×17") and what it gives
 // ("<0.01% with 25 pulls (average 13,600.08)"), for the copied text and the preview card
 export function shareParts(state, result, T) {
-  const banner = presets()[state.preset]?.title ?? T.app.customBanner;
-  const goals = state.goal.map((g) => reqLabel(state.banner, g)).join(state.goalMode === "all" ? T.goalLabel.joinAll : T.goalLabel.joinAny);
+  const one = (v) => {
+    const banner = presets()[v.preset]?.title ?? T.app.customBanner;
+    const goals = v.goal.map((g) => reqLabel(v.banner, g)).join(v.goalMode === "all" ? T.goalLabel.joinAll : T.goalLabel.joinAny);
+    return `${banner} · ${goals}`;
+  };
+  const title = [state, ...stagesOf(state).map((_, k) => stageView(state, k + 1))].map(one).join(T.stages.then);
   let detail = "";
-  if (result) {
+  if (result?.spend === "fixed") detail = T.stages.shareFixed(fmtPct(result.chanceAll));
+  else if (result) {
     if (state.mode === "budget" && result.budget) detail = T.app.shareBudget(fmtPct(result.budget.chanceGoal), fmtInt(state.budget), fmtNum(result.mean));
     else if (result.requiredPulls != null) detail = T.app.sharePulls(state.desired, fmtInt(result.requiredPulls), fmtNum(result.mean));
     else detail = T.app.shareAverage(fmtNum(result.mean));
   }
-  return { title: `${banner} · ${goals}`, detail: detail.replace(/^ - /, "") };
+  return { title, detail: detail.replace(/^ - /, "") };
 }
 export function shareSummary(state, result, T) {
   const { title, detail } = shareParts(state, result, T);

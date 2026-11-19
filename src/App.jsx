@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { freshState, newId, presets, reqLabel, withPresetNames, setPrecision, DEFAULT_SETTINGS } from "./model.js";
+import { freshState, newId, newStage, presets, removeStage, reqLabel, sharesPity, withPresetNames, setPrecision, stagesOf, stageUpdate, stageView, writeStage, DEFAULT_SETTINGS } from "./model.js";
 import { useEngine } from "./useEngine.js";
 import { decodeSetup, linkCode, makeShareLink, makeShortLink, shareParts, shareSummary } from "./share.js";
 import { shareCard } from "./export.js";
@@ -15,7 +15,8 @@ import StatsRow from "./components/StatsRow.jsx";
 import Distribution from "./components/Distribution.jsx";
 import PercentileTable from "./components/PercentileTable.jsx";
 import ComparePanel from "./components/ComparePanel.jsx";
-import SimpleView from "./components/SimpleView.jsx";
+import SimpleView, { StageList } from "./components/SimpleView.jsx";
+import { TrashIcon } from "./components/Icon.jsx";
 
 const STORE_KEY = "banner-calc-v2";
 const COMPARE_KEY = "banner-calc-compare";
@@ -51,7 +52,8 @@ const backgroundStyle = (view) => {
 };
 
 // The parts of the state that define a setup worth comparing
-const snapshotOf = (s) => ({ preset: s.preset, banner: s.banner, goal: s.goal, goalMode: s.goalMode, start: s.start, settings: s.settings });
+// (with several banners: all of them, and how the pulls are spent)
+const snapshotOf = (s) => ({ preset: s.preset, banner: s.banner, goal: s.goal, goalMode: s.goalMode, start: s.start, settings: s.settings, ...(stagesOf(s).length ? { stages: s.stages, spend: s.spend } : {}) });
 
 export default function App() {
   const [lang, setLang] = useState(loadLang);
@@ -96,6 +98,8 @@ export default function App() {
   const [view, setView] = useState("single");
   const [detail, setDetail] = useState("dist");
   const [note, setNote] = useState("");
+  // the full view's selected banner (several banners in one plan): 0 = banner 1
+  const [stageTab, setStageTab] = useState(0);
   setPrecision(state.settings.decimals ?? 2); // before any child formats a number
   const engine = useEngine(state, runToken, lang);
   // every comparison is calculated with the current settings too
@@ -105,6 +109,13 @@ export default function App() {
     [compare.items, calcKey]);
   const compareResults = useCompare(compareItems, lang);
   const P = presets();
+  // several banners in one plan: the full view's left column edits the selected one
+  const views = [state, ...stagesOf(state).map((_, k) => stageView(state, k + 1))];
+  const stacked = views.length > 1;
+  const tab = Math.min(stageTab, views.length - 1);
+  const sv = views[tab];
+  const su = (fn, opts) => stageUpdate(update, tab)(fn, opts); // (update is defined further down)
+  const fixedResult = stacked && engine.result?.spend === "fixed";
 
   useEffect(() => store(STORE_KEY, setup), [setup]);
   useEffect(() => store(SETTINGS_KEY, settings), [settings]);
@@ -123,8 +134,11 @@ export default function App() {
     setState((s) => { const n = fn(s); return custom && n.preset !== "custom" ? { ...n, preset: "custom" } : n; });
 
   const addToCompare = () => {
-    const goals = state.goal.map((r) => reqLabel(state.banner, r)).join(state.goalMode === "all" ? T.goalLabel.joinAll : T.goalLabel.joinAny);
-    const name = T.compare.autoName(P[state.preset]?.title ?? T.app.customBanner, goals);
+    const nameOf = (v) => {
+      const goals = v.goal.map((r) => reqLabel(v.banner, r)).join(v.goalMode === "all" ? T.goalLabel.joinAll : T.goalLabel.joinAny);
+      return T.compare.autoName(P[v.preset]?.title ?? T.app.customBanner, goals);
+    };
+    const name = [state, ...stagesOf(state).map((_, k) => stageView(state, k + 1))].map(nameOf).join(T.stages.then);
     setCompare((c) => ({ ...c, items: [...c.items, { id: newId(), name, snapshot: structuredClone(snapshotOf(state)) }] }));
     setNote(T.app.addedToCompare(name, compare.items.length + 1));
   };
@@ -132,7 +146,8 @@ export default function App() {
   const resetBanner = () => {
     setUndoState(state);
     setUndoKind("reset");
-    setState((s) => ({ ...freshState(presets()[s.preset] ? s.preset : "custom"), mode: s.mode, desired: s.desired, chartLines: s.chartLines }));
+    // (banner 1's; the plan's other banners stay)
+    setState((s) => ({ ...freshState(presets()[s.preset] ? s.preset : "custom"), mode: s.mode, desired: s.desired, chartLines: s.chartLines, stages: stagesOf(s), spend: s.spend ?? "shared" }));
   };
   const undoReset = () => { if (undoState) setState(undoState); setUndoState(null); };
   useEffect(() => {
@@ -230,10 +245,12 @@ export default function App() {
             ) : (
             <div className="workspace">
               <div className="inputs-col">
-                <SetupCard state={state} update={update} setState={setState} setSettings={setSettings} tabRequest={tabRequest} />
-                <PullPlan state={state} update={update} engine={engine}
+                <BannerTabs state={state} update={update} selected={tab} onSelect={setStageTab} T={T} P={P} />
+                <SetupCard state={sv} update={su} setState={(v) => su((s) => (typeof v === "function" ? v(s) : v))} setSettings={setSettings} tabRequest={tabRequest}
+                  pityFrom={tab > 0 && sharesPity(stageView(state, tab - 1), sv) ? tab : null} />
+                <PullPlan state={sv} update={su} engine={engine}
                   onCalculate={() => setRunToken((t) => t + 1)} onAddCompare={addToCompare} note={note} />
-                <TargetSection state={state} update={update} engine={engine} />
+                <TargetSection state={state} update={update} engine={engine} stacked={stacked} stage={{ index: tab, view: sv, update: su }} />
               </div>
 
               <div className="results-col">
@@ -243,15 +260,21 @@ export default function App() {
                     {T.app.viewCompare} <span className="count">{compare.items.length}</span>
                   </button>
                 </div>
-                {view === "single" ? (
+                {view === "single" && fixedResult ? (
+                  <StageList views={views} r={engine.result} budgetMode />
+                ) : view === "single" ? (
                   <>
                     <StatsRow engine={engine} settings={state.settings} />
                     <ResultChart state={state} update={update} engine={engine} theme={theme} />
-                    <div className="detail-tabs" role="tablist" aria-label={T.app.detailTabs}>
-                      <button type="button" role="tab" aria-selected={detail === "dist"} className={`chip-tab ${detail === "dist" ? "is-active" : ""}`} onClick={() => setDetail("dist")}>{T.app.detailDist}</button>
-                      <button type="button" role="tab" aria-selected={detail === "pct"} className={`chip-tab ${detail === "pct" ? "is-active" : ""}`} onClick={() => setDetail("pct")}>{T.app.detailPct}</button>
-                    </div>
-                    {detail === "dist" ? <Distribution state={state} engine={engine} /> : <PercentileTable engine={engine} settings={state.settings} />}
+                    {engine.result?.staged && <StageList views={views} r={engine.result} budgetMode={state.mode === "budget"} />}
+                    {/* (several banners: no per-goal distribution, so the pulls-needed table only) */}
+                    {!engine.result?.staged && (
+                      <div className="detail-tabs" role="tablist" aria-label={T.app.detailTabs}>
+                        <button type="button" role="tab" aria-selected={detail === "dist"} className={`chip-tab ${detail === "dist" ? "is-active" : ""}`} onClick={() => setDetail("dist")}>{T.app.detailDist}</button>
+                        <button type="button" role="tab" aria-selected={detail === "pct"} className={`chip-tab ${detail === "pct" ? "is-active" : ""}`} onClick={() => setDetail("pct")}>{T.app.detailPct}</button>
+                      </div>
+                    )}
+                    {detail === "dist" && !engine.result?.staged ? <Distribution state={state} engine={engine} /> : <PercentileTable engine={engine} settings={state.settings} />}
                   </>
                 ) : (
                   <ComparePanel {...compareApi} theme={theme} settings={state.settings} />
@@ -273,5 +296,50 @@ export default function App() {
           )}
         </footer>
     </I18nContext.Provider>
+  );
+}
+
+// The full view's banner tabs: Banner 1, Banner 2, … and "+ Add banner". The selected banner is
+// what the left column edits; banners after the first pick their banner here (banner 1 uses the
+// banner picker at the top) and can be removed.
+function BannerTabs({ state, update, selected, onSelect, T, P }) {
+  const G = T.stages;
+  const stages = stagesOf(state);
+  const count = 1 + stages.length;
+  const view = stageView(state, selected);
+  const add = () => {
+    const last = stageView(state, count - 1);
+    update((s) => ({ ...s, stages: [...stagesOf(s), newStage(P[last.preset] ? last.preset : "limitedChar")] }));
+    onSelect(count);
+  };
+  const pick = (key) => update((s) => {
+    const n = newStage(key);
+    return writeStage(s, selected, { ...stageView(s, selected), preset: key, banner: n.banner, goal: n.goal, goalMode: "all", start: n.start, budget: n.pulls });
+  });
+  const remove = () => { update((s) => removeStage(s, selected)); onSelect(Math.max(0, selected - 1)); };
+  return (
+    <div className="banner-tabs">
+      <div className="banner-tabs-row" role="tablist" aria-label={G.tabsLabel}>
+        {Array.from({ length: count }, (_, i) => (
+          <button key={i} type="button" role="tab" aria-selected={selected === i} className={`chip-tab ${selected === i ? "is-active" : ""}`} onClick={() => onSelect(i)}>
+            {G.banner(i + 1)}
+          </button>
+        ))}
+        <button type="button" className="btn btn--quiet btn--sm" onClick={add}>+ {G.addBannerShort}</button>
+      </div>
+      {count > 1 && (
+        <div className="banner-tabs-pick">
+          {selected === 0 ? (
+            <span className="banner-tabs-name">{P[view.preset]?.title ?? T.app.customBanner}</span>
+          ) : (
+            <select className="select" value={P[view.preset] ? view.preset : ""} onChange={(e) => pick(e.target.value)} aria-label={G.banner(selected + 1)}>
+              {!P[view.preset] && <option value="">{T.app.customBanner}</option>}
+              {Object.entries(P).map(([k, p]) => <option key={k} value={k}>{p.title}</option>)}
+            </select>
+          )}
+          <button type="button" className="btn--delete" onClick={remove} aria-label={G.removeBanner(selected + 1)} title={G.removeBanner(selected + 1)}><TrashIcon /></button>
+        </div>
+      )}
+    </div>
   );
 }

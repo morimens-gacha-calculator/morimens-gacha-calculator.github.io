@@ -89,9 +89,9 @@ export function useEngine(state, runToken, lang) {
   }, []);
 
   // Only what changes the numbers triggers a new calculation (not chart lines, view, etc.)
-  const { banner, goal, goalMode, start, settings, mode, budget, desired } = state;
+  const { banner, goal, goalMode, start, settings, mode, budget, desired, stages, spend } = state;
   const { decimals, ...calcSettings } = settings; // eslint-disable-line no-unused-vars -- display only
-  const calcKey = JSON.stringify({ banner, goal, goalMode, start, settings: calcSettings, mode, budget, desired });
+  const calcKey = JSON.stringify({ banner, goal, goalMode, start, settings: calcSettings, mode, budget, desired, stages: stages ?? [], spend });
 
   useEffect(() => {
     let query;
@@ -113,7 +113,8 @@ export function useEngine(state, runToken, lang) {
       samplesRef.current = [];
       lastJobRef.current = {
         id,
-        mode: state.mode,
+        // each banner with its own pulls has no "pulls needed": that's asked of one shared budget
+        mode: query.spend === "fixed" ? "budget" : state.mode,
         desired: state.desired,
         ...query,
         budget: state.mode === "budget" ? state.budget : null,

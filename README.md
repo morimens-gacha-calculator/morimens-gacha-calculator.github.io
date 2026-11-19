@@ -110,3 +110,20 @@ one block of shared component styles at the end of the same file. A few rules ke
   `.btn--quiet` (text only) and icon buttons. One-of-a-few choices use the segmented switch.
 - Fonts are served by the site itself (`src/main.jsx`): Inter for everything, JetBrains Mono for the
   banner data editor.
+
+## Several banners in one plan
+
+A plan can have more than one banner ("+ Add another banner" in the simple view, the banner tabs
+in the full view). Pulls are spent in one of two ways:
+
+- **One budget** (default): pull on banner 1 until its goal is met, then banner 2 with what's
+  left, and so on. The answer is the full distribution of the total number of pulls.
+- **Each banner its own**: every banner gets its own pulls; the answer is the chance that every
+  banner's goal is met with its pulls.
+
+Banners of the same type continue each other's pity and guarantees, exactly where the previous
+banner left them when its goal was met (`src/engine/staged.js`, using the chain's end states). Which
+built-in banners count as the same type is set in `PITY_TYPE` in `src/model.js` (the two Kaleido
+banners share one type); other banners each are their own type, and custom banners never share.
+Banner 1 is stored as the plan itself and the others in `stages`, so plans, links and comparisons
+from before still open unchanged.

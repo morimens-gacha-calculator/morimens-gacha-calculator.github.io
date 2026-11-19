@@ -42,6 +42,10 @@
 //   mean, chanceMet, expectedByPull[t]
 // method ("joint", "split" or "layered"), states, ms — diagnostics
 //
+// ── Several banners in one plan (solveStages, staged.js) ─────────────────────
+// stages: [{ tree, goal, goalMode, start, shares }], spend "shared" (one budget, in order) or
+// "fixed" (budgets[k] pulls each). shares: continues the previous banner's pity and memory.
+//
 // ── Start state (all optional) ───────────────────────────────────────────────
 // { pity:   { "1": 12 },            visits since that alternative last came up
 //   streak: { "1,1": [0, 2] },      node path → [last alternative index, run length]
@@ -65,6 +69,7 @@ export { bestCase } from "./best.js";
 export { expandSubsets } from "./goal.js";
 export { clearCache } from "./cache.js";
 export { setCancelCheck } from "./cancel.js";
+export { solveStages } from "./staged.js";
 
 const DEFAULT_PERCENTILES = [10, 25, 50, 75, 90, 95, 99];
 

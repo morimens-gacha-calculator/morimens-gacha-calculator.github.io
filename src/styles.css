@@ -890,3 +890,35 @@ html[data-input="mouse"] .select:focus { border-color: var(--line-strong); outli
   .s-cmp-row > :nth-child(5) { grid-area: act; }
   .s-cmp-name { padding-bottom: 2px !important; }
 }
+
+/* ══ Several banners in one plan (simple view) ════════════════════════════════════════════
+   Each banner is a block: "BANNER 2  [banner ▾]  bin", its goals, its pity (or a note that it
+   continues the one before). Blocks are separated by a line, not nested cards. */
+.s-banner { display: flex; flex-direction: column; gap: 12px; }
+.s-banner.is-stacked + .s-banner.is-stacked { border-top: 1px solid var(--line); padding-top: 14px; }
+.s-banner-head { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.s-banner-n { flex: none; font-size: 11px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+.s-banner-name { flex: 1 1 auto; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.s-banner-pick { flex: 1 1 auto; min-width: 0; }
+.s-banner-head .s-remove { margin-left: auto; }
+.s-carry { margin: 0; display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--ink-2); }
+.s-add-banner { margin-top: 0; }
+/* the answer: how each banner fares */
+.s-stages { display: grid; gap: 6px; }
+.s-stages-title { margin: 0; font-size: 12.5px; font-weight: 500; color: var(--muted); }
+.s-stages ol { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; }
+.s-stages li { display: flex; align-items: baseline; gap: 10px; padding: 8px 12px; border-radius: var(--r-md); background: var(--surface-3); }
+.s-stage-n { flex: none; width: 20px; height: 20px; border-radius: 50%; display: inline-grid; place-items: center; font-size: 12px; font-weight: 700; background: var(--action-soft); color: var(--ink); align-self: center; }
+.s-stage-name { flex: 1 1 auto; min-width: 0; }
+.s-stage-pulls { color: var(--muted); font-size: 13px; }
+.s-stage-val { flex: none; font-weight: 700; font-size: 16px; font-variant-numeric: tabular-nums; }
+/* full view: the banner tabs above the left column, and how pulls are spent */
+.banner-tabs { display: grid; gap: 8px; }
+.banner-tabs-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.banner-tabs-pick { display: flex; align-items: center; gap: 8px; }
+.banner-tabs-pick .select { flex: 1 1 auto; min-width: 0; }
+.banner-tabs-name { flex: 1 1 auto; font-weight: 600; }
+.target-spend { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin-bottom: 12px; }
+.results-col .s-stages { margin-top: 4px; }
+.target-spend > .field-label { flex-basis: 100%; }
+.target-spend .mode-toggle { flex: 1 1 auto; }

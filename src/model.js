@@ -92,10 +92,73 @@ const sameShape = (a, b) => a.alts.length === b.alts.length && a.alts.every((x, 
   return x.children ? sameShape(x.children, y.children) : num(x.count, 1) === num(y.count, 1);
 });
 export function withPresetNames(state) {
-  const p = presets()[state.preset];
-  if (!p) return state;
-  if (!sameShape(state.banner, p.banner)) return { ...freshState(state.preset), mode: state.mode, desired: state.desired, chartLines: state.chartLines };
-  return { ...state, banner: structuredClone(p.banner) };
+  const named = (b) => {
+    const p = presets()[b.preset];
+    if (!p) return b;
+    if (!sameShape(b.banner, p.banner)) return null;
+    return { ...b, banner: structuredClone(p.banner) };
+  };
+  // the other banners of the plan get their names too (one whose preset changed shape starts fresh)
+  const stages = stagesOf(state).map((st) => named(st) ?? newStage(st.preset));
+  const first = named(state);
+  if (!first) return { ...freshState(state.preset), mode: state.mode, desired: state.desired, chartLines: state.chartLines, stages, spend: state.spend ?? "shared" };
+  return stages.length ? { ...first, stages } : first;
+}
+
+// ── Several banners in one plan ──
+// Banner 1 is the plan itself (preset, banner, goal, goalMode, start, budget). Banners 2, 3, …
+// are state.stages: [{ id, preset, banner, goal, goalMode, start, pulls }], pulled on in order.
+// state.spend: "shared" (one budget: each banner until its goal is met, then the next) or
+// "fixed" (each banner gets its own pulls; banner 1's are budget, the others' are pulls).
+// Banners of the same type continue each other's pity (sharesPity).
+export const stagesOf = (s) => (Array.isArray(s?.stages) ? s.stages : []);
+export const bannerCount = (s) => 1 + stagesOf(s).length;
+export function newStage(key) {
+  const f = freshState(key);
+  return { id: newId(), preset: key, banner: f.banner, goal: f.goal, goalMode: "all", start: f.start, pulls: f.budget };
+}
+// Banner i of the plan (0 = the first) as a plan of its own, so every editor can work on it
+export function stageView(state, i) {
+  if (!i) return state;
+  const st = stagesOf(state)[i - 1];
+  return { ...state, preset: st.preset, banner: st.banner, goal: st.goal, goalMode: st.goalMode ?? "all", start: st.start, budget: st.pulls, stageIndex: i };
+}
+// …and an edit of that view written back into the plan
+export function writeStage(state, i, view) {
+  if (!i) return view;
+  const stages = stagesOf(state).slice();
+  stages[i - 1] = { ...stages[i - 1], preset: view.preset, banner: view.banner, goal: view.goal, goalMode: view.goalMode, start: view.start, pulls: view.budget };
+  // what the editors may change besides the banner: the plan-wide fields
+  return { ...state, stages, mode: view.mode, desired: view.desired, chartLines: view.chartLines };
+}
+// update() for banner i: update(fn, { custom }) as the editors use it
+export const stageUpdate = (update, i) => (fn, opts = {}) => {
+  if (!i) return update(fn, opts);
+  return update((s) => {
+    const out = writeStage(s, i, fn(stageView(s, i)));
+    if (opts.custom) out.stages[i - 1] = { ...out.stages[i - 1], preset: "custom" };
+    return out;
+  });
+};
+// Taking banner i out of the plan (the next one moves up; banner 1's place is the plan itself)
+export function removeStage(state, i) {
+  const stages = stagesOf(state);
+  if (!stages.length) return state;
+  if (i > 0) return { ...state, stages: stages.filter((_, k) => k !== i - 1) };
+  const [second, ...rest] = stages;
+  return { ...state, preset: second.preset, banner: second.banner, goal: second.goal, goalMode: second.goalMode ?? "all", start: second.start, budget: state.spend === "fixed" ? second.pulls : state.budget, stages: rest };
+}
+
+// Banners whose pity carries over from one to the next: built-in banners of the same type (the
+// Kaleido banners count as one type), and only when their pity rules line up exactly.
+const PITY_TYPE = { kaleido1: "kaleido", kaleido2: "kaleido" };
+const pityType = (key) => (presets()[key] ? PITY_TYPE[key] ?? key : null);
+const pitySkeleton = (n) => JSON.stringify({
+  s: num(n.streak), a: n.alts.map((a) => [num(a.pity), !!a.pityYields, a.pityResetBy ?? "self", a.onPreempt ?? "carry", String(a.softStart ?? ""), String(a.softStep ?? ""), a.children ? JSON.parse(pitySkeleton(a.children)) : null]),
+});
+export function sharesPity(prev, cur) {
+  const a = pityType(prev.preset), b = pityType(cur.preset);
+  return !!a && a === b && pitySkeleton(prev.banner) === pitySkeleton(cur.banner);
 }
 
 // What "Custom banner" starts from the first time
@@ -133,6 +196,8 @@ export function freshState(key) {
     desired: 90,
     settings: { ...DEFAULT_SETTINGS },
     chartLines: { ...DEFAULT_LINES },
+    stages: [],
+    spend: "shared",
   };
 }
 
@@ -288,6 +353,23 @@ export function reqLabel(tree, r) {
 
 // Everything the worker needs
 export function buildQuery(state) {
+  const stages = stagesOf(state);
+  if (!stages.length) return buildBannerQuery(state);
+  const E = getStrings().errors;
+  const views = [state, ...stages.map((_, k) => stageView(state, k + 1))];
+  const queries = views.map((v, i) => {
+    try { return buildBannerQuery(v); } catch (e) { throw new Error(E.inBanner(i + 1, e.message)); }
+  });
+  const { tree, goal, goalMode, start, ...common } = queries[0]; // eslint-disable-line no-unused-vars
+  return {
+    ...common,
+    stages: queries.map((q, i) => ({ tree: q.tree, goal: q.goal, goalMode: q.goalMode, start: q.start, shares: i > 0 && sharesPity(views[i - 1], views[i]) })),
+    spend: state.spend === "fixed" ? "fixed" : "shared",
+    budgets: views.map((v) => Math.max(0, Math.floor(num(v.budget)))),
+  };
+}
+
+function buildBannerQuery(state) {
   const { banner, goal, goalMode, start, settings } = state;
   const E = getStrings().errors;
   if (!goal.length) throw new Error(E.emptyPlan);

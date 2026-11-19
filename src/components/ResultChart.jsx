@@ -140,7 +140,7 @@ export default function ResultChart({ state, update, engine, theme, simple = fal
     : { ...DEFAULT_LINES, ...state.chartLines };
   const target = state.mode === "budget" ? state.budget : r?.requiredPulls;
   const views = [["cdf", L.cdf], ["pmf", L.pmf]];
-  if (b) views.push(["progress", L.progress]);
+  if (b && !r?.staged) views.push(["progress", L.progress]); // (several banners: no per-goal progress)
   const active = !simple && views.some(([v]) => v === view) ? view : "cdf";
   const pctOptions = [...new Set([50, ...listOfInts(state.settings.pct).filter((x) => x > 0 && x < 100)])].sort((a, c) => a - c);
 

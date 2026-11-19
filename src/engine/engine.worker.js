@@ -7,7 +7,7 @@
 // threads: false in a message keeps that calculation on one core (comparisons run several
 // workers side by side instead).
 import { PERCENTILE_SLACK } from "./settings.js";
-import { solve, budgetOnly, setCancelCheck } from "./banner-engine.js";
+import { solve, solveStages, budgetOnly, setCancelCheck } from "./banner-engine.js";
 import { setThreadPool, createPoolMemory } from "./chain-step.js";
 
 // Helper threads for big chains. Only on cross-origin isolated pages (SharedArrayBuffer) with
@@ -67,7 +67,18 @@ self.onmessage = async ({ data }) => {
   };
   try {
     let result;
-    if (mode === "budget") {
+    if (query.stages) {
+      // several banners in one plan (staged.js); "pulls needed" reads the combined curve
+      result = solveStages({ ...query, budget: mode === "budget" ? query.budget : null, onProgress });
+      if (mode !== "budget" && result.cdf) {
+        const q = Math.min(1, Math.max(0, desired / 100));
+        let pulls = null;
+        if (q >= 1) pulls = result.max;
+        else for (let t = 0; t < result.cdf.length; t++) if (result.cdf[t] >= q - PERCENTILE_SLACK) { pulls = t; break; }
+        result.requiredPulls = pulls;
+        result.budget = pulls == null ? null : { pulls, chanceGoal: result.cdf[pulls] ?? 1, stages: result.stages.map((st) => st.cdf[Math.min(pulls, st.cdf.length - 1)]), requirements: [] };
+      }
+    } else if (mode === "budget") {
       result = solve({ ...query, onProgress });
     } else {
       result = solve({ ...query, budget: null, budgetAfter: true, onProgress });

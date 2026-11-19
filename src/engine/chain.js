@@ -4,32 +4,42 @@ import { stopIfCancelled } from "./cancel.js";
 import { DEFAULT_MAX_STATES, LUMPING_TOLERANCE, MAX_GAP } from "./settings.js";
 import { EngineError, internalError } from "./errors.js";
 import { parseGoal } from "./goal.js";
-import { findAlt, findNode, isPrefix, leavesUnder, normaliseNode, resolvePath } from "./tree.js";
+import { findAlt, findNode, isPrefix, leavesUnder, normaliseNode, pathKey, resolvePath } from "./tree.js";
 
 // State = small ints: pity counters, streak memories, goal totals, and for pools
 // that need per-item tracking a histogram "how many items have 0,1,2,… copies"
 // (identical items are interchangeable, so only the histogram matters).
 // trackHits: list of paths. Instead of a goal, every transition is labelled with which of
 // these outcomes (1, 2, …) the pull reached, or 0 for none. Used by the layered method.
-export function compile(treeRaw, goalRaw, { start: startRaw = {}, goalMode = "all", absorb = true, maxStates = DEFAULT_MAX_STATES, onProgress = null, trackHits = null } = {}) {
+// keepEnd (for banners stacked in one plan, see staged.js): instead of one "goal reached" sink, a
+// separate end state for every combination of pity counters and memory the banner can be in when
+// the goal is met. End states have no way out, so the mass that reaches one shows up in the
+// stepper's vector for exactly one pull; ends[] says where each one is and its counters as a start.
+export function compile(treeRaw, goalRaw, { start: startRaw = {}, goalMode = "all", absorb = true, keepEnd = false, maxStates = DEFAULT_MAX_STATES, onProgress = null, trackHits = null } = {}) {
   const root = normaliseNode(treeRaw, []);
   let nVars = 0;
   const newVar = () => nVars++;
 
-  (function assign(node) {
-    if (node.streak > 0) node.sv = newVar(); // value = (last+1)*(streak+1) + run
-    for (const a of node.alts) {
+  // the banner's own memory: pity counters and streak rules, with where they are in the tree
+  const carry = [];
+  (function assign(node, path) {
+    if (node.streak > 0) { // value = (last+1)*(streak+1) + run
+      node.sv = newVar();
+      carry.push({ v: node.sv, kind: "streak", key: pathKey(path), n1: node.streak + 1 });
+    }
+    for (const [ai, a] of node.alts.entries()) {
       if (a.pity || a.soft) {
         a.cv = newVar();
+        carry.push({ v: a.cv, kind: "pity", key: pathKey([...path, ai]) });
         let cap = a.pity || Infinity;
         if (a.soft) cap = Math.min(cap, a.soft.start - 1 + Math.ceil((1 - a.p) / a.soft.step));
         a.cap = Math.max(1, cap);
         if (a.pityResetBy === "above") node.resetBelow = true;
         if (a.pity && a.onPreempt === "lose") node.losesDue = true;
       }
-      if (a.child) assign(a.child);
+      if (a.child) assign(a.child, [...path, ai]);
     }
-  })(root);
+  })(root, []);
 
   const reqs = trackHits ? [] : parseGoal(root, goalRaw);
   if (trackHits) {
@@ -256,6 +266,16 @@ export function compile(treeRaw, goalRaw, { start: startRaw = {}, goalMode = "al
   const done = absorb ? isDone : () => false;
   const store = new StateStore(nVars);
   const rows = new RowBuilder();
+  // keepEnd: an end state holds only the banner's memory; every other counter is -1, so it can't
+  // be mistaken for a state still on its way to the goal
+  const ends = [], endAt = new Set();
+  const endOf = (t) => {
+    const e = new Int32Array(nVars).fill(-1);
+    for (const c of carry) e[c.v] = t[c.v];
+    let j = store.find(e);
+    if (j < 0) { j = store.add(e); endAt.add(j); ends.push({ index: j, vec: e }); }
+    return j;
+  };
   if (!done(start)) store.add(Int32Array.from(start));
   if (onProgress) onProgress({ phase: "build", states: store.n });
   let reachesSink = false;
@@ -266,9 +286,11 @@ export function compile(treeRaw, goalRaw, { start: startRaw = {}, goalMode = "al
       if (onProgress) onProgress({ phase: "build", states: store.n });
     }
     merged.clear();
+    if (endAt.has(k)) { rows.addRow(k, merged); continue; } // an end state: no way out
     for (const [p, t, lab] of step(store.view(k))) {
       let j = 0;
-      if (!done(t)) {
+      if (keepEnd && done(t)) j = endOf(t);
+      else if (!done(t)) {
         j = store.find(t);
         if (j < 0) {
           j = store.add(t);
@@ -278,7 +300,7 @@ export function compile(treeRaw, goalRaw, { start: startRaw = {}, goalMode = "al
       const key = j * 8 + lab; // target and label in one key
       merged.set(key, (merged.get(key) ?? 0) + p);
     }
-    if (merged.has(0)) reachesSink = true;
+    if (merged.has(0) || (keepEnd && ends.length)) reachesSink = true;
     rows.addRow(k, merged);
   }
   if (absorb && store.n > 1 && !reachesSink)
@@ -296,7 +318,8 @@ export function compile(treeRaw, goalRaw, { start: startRaw = {}, goalMode = "al
   })(root);
   let startIndex = store.n > 1 ? 1 : 0;
   if (onProgress) onProgress({ phase: "reduce", states: store.n });
-  let st = store, csr = rows.finish(store.n), progressMade = true;
+  // (with keepEnd every counter of the banner's memory is wanted at the end: no reduction)
+  let st = store, csr = rows.finish(store.n), progressMade = !keepEnd;
   const dropped = new Set();
   while (progressMade) {
     progressMade = false;
@@ -316,7 +339,22 @@ export function compile(treeRaw, goalRaw, { start: startRaw = {}, goalMode = "al
     worst: absorb ? worstCase(csr, startIndex) : null,
     best: absorb ? bestCase(csr, startIndex) : null,
     reqs, progress, isDone, goalMode,
+    // keepEnd: the end states, each with its counters as a start for the next banner; startEnd
+    // is the start's own counters (for a goal already met before any pull)
+    ends: keepEnd ? ends.map((e) => ({ index: e.index, start: memoryAsStart(carry, e.vec) })) : null,
+    startEnd: keepEnd ? memoryAsStart(carry, start) : null,
   };
+}
+
+// Pity counters and streak memory from a state's counters, in the form solve() takes as start
+function memoryAsStart(carry, vec) {
+  const out = { pity: {}, streak: {} };
+  for (const c of carry) {
+    const v = vec[c.v];
+    if (c.kind === "pity") { if (v > 0) out.pity[c.key] = v; continue; }
+    if (v > 0) out.streak[c.key] = [Math.floor(v / c.n1) - 1, v % c.n1];
+  }
+  return out;
 }
 
 // States as rows of one growing Int32Array, found through an open-addressing hash table.

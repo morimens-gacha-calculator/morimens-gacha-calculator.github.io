@@ -14,6 +14,7 @@ export default function Progress({ engine, compact = false }) {
     : p.phase === "reduce" ? L.simplifying(fmtInt(p.states))
     : p.phase === "events" ? (p.name ? L.events(p.name, fmtInt(p.t)) : L.calculating(fmtInt(p.t)))
     : p.phase === "combine" ? L.combining
+    : p.phase === "stages" ? L.stages(p.step, p.steps)
     : p.phase === "budget" ? L.budget
     : L.calculating(fmtInt(p.t));
   const laterSteps = p?.steps != null && p.step < p.steps;

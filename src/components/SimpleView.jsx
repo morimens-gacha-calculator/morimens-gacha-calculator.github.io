@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Line } from "react-chartjs-2";
-import { allAlts, allNodes, fmtInt, fmtPct, itemNames, listOfInts, newId, num, reqLabel } from "../model.js";
+import { allAlts, allNodes, fmtInt, fmtPct, itemNames, listOfInts, newId, newStage, num, presets, removeStage, reqLabel, sharesPity, stagesOf, stageUpdate, stageView } from "../model.js";
 import { errorText, useT } from "../i18n/index.js";
 import NumberInput from "./NumberInput.jsx";
 import Progress from "./Progress.jsx";
@@ -275,21 +275,24 @@ function Answer({ state, update, engine, theme, onCompare, onDetails, isSaved, c
   const r = engine.result;
   const budgetMode = state.mode === "budget";
   const settings = state.settings;
-  const goals = state.goal.map((g) => goalText(state.banner, g, S)).join(state.goalMode === "all" ? ` ${S.and} ` : ` ${S.or} `);
+  const views = [state, ...stagesOf(state).map((_, k) => stageView(state, k + 1))];
+  const goalsOf = (v) => v.goal.map((g) => goalText(v.banner, g, S)).join(v.goalMode === "all" ? ` ${S.and} ` : ` ${S.or} `);
+  const goals = views.map(goalsOf).join(T.stages.then);
   if (engine.status === "error") {
     return <section className="s-card s-answer" aria-label={S.answerLabel}><p className="error-box" role="alert">{errorText(T, engine)}</p></section>;
   }
   if (!r) return <section className="s-card s-answer" aria-label={S.answerLabel}><Progress engine={engine} /></section>;
-  const half = quantile(r, 0.5), nine = quantile(r, 0.9);
-  const chance = r.budget?.chanceGoal;
+  const fixed = r.spend === "fixed";
+  const half = fixed ? null : quantile(r, 0.5), nine = fixed ? null : quantile(r, 0.9);
+  const chance = fixed ? r.chanceAll : r.budget?.chanceGoal;
   const actions = (
     <>
       <button type="button" className="btn btn--primary" onClick={onCompare} disabled={isSaved}>{isSaved ? S.inCompare : S.compare}</button>
       <button type="button" className="btn btn--secondary" onClick={onDetails}>{S.details}</button>
     </>
   );
-  const showBest = settings.showBest !== false && r.min != null && r.min > 0;
-  const showWorst = settings.showWorst !== false && r.maxKnown !== false;
+  const showBest = !fixed && settings.showBest !== false && r.min != null && r.min > 0;
+  const showWorst = !fixed && settings.showWorst !== false && r.maxKnown !== false;
   const stats = [
     half != null && [S.statHalf, fmtInt(half)],
     nine != null && [S.statNine, fmtInt(nine)],
@@ -312,8 +315,10 @@ function Answer({ state, update, engine, theme, onCompare, onDetails, isSaved, c
         <SimpleCompare {...compare} load={(it) => { compare.load(it); setTab("plan"); }} theme={theme} settings={settings} current={isSaved ? null : r}>{actions}</SimpleCompare>
       ) : (
         <>
-          <p className="s-context">{budgetMode ? S.contextBudget(goals, fmtInt(state.budget)) : S.contextPulls(goals)}</p>
-          {budgetMode && chance != null ? (
+          <p className="s-context">{fixed ? goals : budgetMode ? S.contextBudget(goals, fmtInt(state.budget)) : S.contextPulls(goals)}</p>
+          {fixed ? (
+            <p className="s-big">{highlight(S.youHave, fmtPct(chance))}</p>
+          ) : budgetMode && chance != null ? (
             <>
               <p className="s-big">{highlight(S.youHave, fmtPct(chance))}</p>
               <p className="s-second">{highlight(S.averageBig, fmtInt(r.mean))}</p>
@@ -321,7 +326,7 @@ function Answer({ state, update, engine, theme, onCompare, onDetails, isSaved, c
           ) : (
             <p className="s-big">{highlight(S.averageBig, fmtInt(r.mean))}</p>
           )}
-          {!budgetMode && (
+          {!budgetMode && !fixed && (
             <p className="s-sure">
               <span>{S.toBeSure}</span>
               <NumberInput className="custom-input s-field s-num" integer={false} min={1} max={99.99} value={state.desired}
@@ -336,11 +341,104 @@ function Answer({ state, update, engine, theme, onCompare, onDetails, isSaved, c
               ))}
             </dl>
           )}
-          {budgetMode && r.min != null && state.budget < r.min && <p className="note-box" role="status">{T.target.notPossible(fmtInt(r.min))}</p>}
-          <ResultChart state={state} update={update} engine={engine} theme={theme} simple>{actions}</ResultChart>
+          {r.staged && <StageList views={views} r={r} budgetMode={budgetMode} />}
+          {budgetMode && !fixed && r.min != null && state.budget < r.min && <p className="note-box" role="status">{T.target.notPossible(fmtInt(r.min))}</p>}
+          {fixed ? <div className="s-actions">{actions}</div> : <ResultChart state={state} update={update} engine={engine} theme={theme} simple>{actions}</ResultChart>}
         </>
       )}
     </section>
+  );
+}
+
+// One banner of the plan: its name (banner 1 is picked above the cards; the others here), its goals,
+// then its pity questions, or a note that its pity continues from the banner before it. With each
+// banner on its own pulls, its pull count too. A plan of one banner shows just goals and pity.
+function BannerBlock({ state, update, index, count, fixed, carries, onRemove, pullsRow }) {
+  const T = useT();
+  const S = T.simple, G = T.stages;
+  const P = presets();
+  const choices = goalChoices(state.banner, S);
+  const stacked = count > 1;
+  const addGoal = () => update((s) => {
+    const first = choices.groups[0]?.options[0]?.value ?? choices.other[0]?.value;
+    const blank = { id: newId(), path: "0", type: "total", item: 0, k: 1, copies: 1, from: "" };
+    return { ...s, goal: [...s.goal, first ? applyChoice(s.banner, blank, first) : blank] };
+  });
+  const pick = (key) => update((s) => {
+    const n = newStage(key);
+    return { ...s, preset: key, banner: n.banner, goal: n.goal, goalMode: "all", start: n.start, budget: n.pulls };
+  });
+  return (
+    <div className={`s-banner ${stacked ? "is-stacked" : ""}`}>
+      {stacked && (
+        <div className="s-banner-head">
+          <span className="s-banner-n">{G.banner(index + 1)}</span>
+          {index === 0 ? (
+            <span className="s-banner-name">{P[state.preset]?.title ?? T.app.customBanner}</span>
+          ) : (
+            <select className="select s-field s-banner-pick" value={P[state.preset] ? state.preset : ""} onChange={(e) => pick(e.target.value)} aria-label={G.banner(index + 1)}>
+              {!P[state.preset] && <option value="">{T.app.customBanner}</option>}
+              {Object.entries(P).map(([k, p]) => <option key={k} value={k}>{p.title}</option>)}
+            </select>
+          )}
+          <button type="button" className="s-remove" onClick={onRemove} aria-label={G.removeBanner(index + 1)} title={G.removeBanner(index + 1)}><TrashIcon /></button>
+        </div>
+      )}
+      <div className="s-goals">
+        <div className="s-goal-head" aria-hidden="true"><span>{S.colWhat}</span><span>{S.colHowMany}</span></div>
+        {state.goal.map((row, i) => (
+          <GoalLine key={row.id} state={state} update={update} row={row} index={i} choices={choices} />
+        ))}
+      </div>
+      <button type="button" className="btn btn--quiet btn--sm s-add" onClick={addGoal}>+ {S.addGoal}</button>
+      {!stacked && <div className="s-divider" />}
+      {pullsRow}
+      {fixed && (
+        <div className="s-row">
+          <label className="s-row-label">
+            <span>{G.pullsOn}</span>
+            <NumberInput className="custom-input s-field s-num s-pulls" min={0} value={state.budget} onChange={(v) => update((s) => ({ ...s, budget: v }))} />
+            <span>{S.pulls}</span>
+          </label>
+        </div>
+      )}
+      {carries ? (
+        <p className="s-carry">
+          <span>{G.carries(index)}</span>
+          <HelpButton label={G.carries(index)} text={G.carriesHelp(index)} />
+        </p>
+      ) : (
+        <StartQuestions state={state} update={update} />
+      )}
+    </div>
+  );
+}
+
+// How each banner of the plan fares. One budget: the chance its goal (and the ones before it) is met
+// within your pulls, or on average by which pull. Each banner on its own pulls: its chance with
+// them (given the banners before it were done, which matters when pity carries over).
+export function StageList({ views, r, budgetMode }) {
+  const T = useT();
+  const G = T.stages, P = presets();
+  const fixed = r.spend === "fixed";
+  const title = fixed ? G.listFixed : budgetMode ? G.listBudget : G.listPulls;
+  return (
+    <div className="s-stages">
+      <p className="s-stages-title">{title}</p>
+      <ol>
+        {views.map((v, i) => {
+          const st = r.stages[i];
+          const value = fixed ? fmtPct(st.chance) : budgetMode ? fmtPct(r.budget?.stages?.[i]) : fmtInt(st.mean);
+          return (
+            <li key={i}>
+              <span className="s-stage-n">{i + 1}</span>
+              <span className="s-stage-name">{P[v.preset]?.title ?? T.app.customBanner}{fixed ? <span className="s-stage-pulls"> · {G.pullsCount(fmtInt(st.budget))}</span> : null}</span>
+              <span className="s-stage-val">{value}</span>
+            </li>
+          );
+        })}
+      </ol>
+    </div>
   );
 }
 
@@ -365,8 +463,13 @@ function examplesFor(banner, S) {
 
 export default function SimpleView({ state, update, engine, theme, firstVisit, onExampleDone, onCompare, onDetails, compare, isSaved }) {
   const T = useT();
-  const S = T.simple;
-  const choices = goalChoices(state.banner, S);
+  const S = T.simple, G = T.stages;
+  // the plan's banners: 1 is the plan itself, the others are its stages (model.js)
+  const views = [state, ...stagesOf(state).map((_, k) => stageView(state, k + 1))];
+  const stacked = views.length > 1;
+  const fixed = stacked && state.spend === "fixed";
+  // a new banner: the same kind as the last one (the next banner of that type is the usual plan)
+  const addBanner = () => update((s) => ({ ...s, stages: [...stagesOf(s), newStage(views[views.length - 1].preset in presets() ? views[views.length - 1].preset : s.preset in presets() ? s.preset : "limitedChar")] }));
   const examples = firstVisit ? examplesFor(state.banner, S) : [];
   // the pulls field: empty = "how many do I need" (pulls mode), a number = "do I have enough"
   const [pullsText, setPullsText] = useState(state.mode === "budget" ? String(state.budget) : "");
@@ -377,11 +480,17 @@ export default function SimpleView({ state, update, engine, theme, firstVisit, o
     const v = Math.floor(Number(text));
     if (Number.isFinite(v) && v >= 0) update((s) => ({ ...s, mode: "budget", budget: v }));
   };
-  const addGoal = () => update((s) => {
-    const first = choices.groups[0]?.options[0]?.value ?? choices.other[0]?.value;
-    const blank = { id: newId(), path: "0", type: "total", item: 0, k: 1, copies: 1, from: "" };
-    return { ...s, goal: [...s.goal, first ? applyChoice(s.banner, blank, first) : blank] };
-  });
+  const pullsRow = (
+    <div className="s-row">
+      <label className="s-row-label">
+        <span>{S.iHave}</span>
+        <input type="number" inputMode="numeric" min={0} className="custom-input s-field s-num s-pulls" value={pullsText}
+          placeholder="?" onChange={(e) => onPulls(e.target.value)} />
+        <span>{S.pulls}</span>
+      </label>
+      <HelpButton label={S.iHave} text={stacked ? G.pullsHelpShared : S.pullsHelp} />
+    </div>
+  );
   // the answer's chart: this plan, or the comparison (shown after adding a plan to it)
   const [tab, setTab] = useState("plan");
   useEffect(() => { if (!compare.items.length) setTab("plan"); }, [compare.items.length]);
@@ -401,24 +510,28 @@ export default function SimpleView({ state, update, engine, theme, firstVisit, o
           </div>
         )}
         <h2 className="s-lead">{S.iWant}</h2>
-        <div className="s-goals">
-          <div className="s-goal-head" aria-hidden="true"><span>{S.colWhat}</span><span>{S.colHowMany}</span></div>
-          {state.goal.map((row, i) => (
-            <GoalLine key={row.id} state={state} update={update} row={row} index={i} choices={choices} />
-          ))}
-        </div>
-        <button type="button" className="btn btn--quiet btn--sm s-add" onClick={addGoal}>+ {S.addGoal}</button>
-        <div className="s-divider" />
-        <div className="s-row">
-          <label className="s-row-label">
-            <span>{S.iHave}</span>
-            <input type="number" inputMode="numeric" min={0} className="custom-input s-field s-num s-pulls" value={pullsText}
-              placeholder="?" onChange={(e) => onPulls(e.target.value)} />
-            <span>{S.pulls}</span>
-          </label>
-          <HelpButton label={S.iHave} text={S.pullsHelp} />
-        </div>
-        <StartQuestions state={state} update={update} />
+        {views.map((v, i) => (
+          <BannerBlock key={i === 0 ? "first" : stagesOf(state)[i - 1].id} state={v} update={stageUpdate(update, i)} index={i}
+            count={views.length} fixed={fixed} carries={i > 0 && sharesPity(views[i - 1], v)} onRemove={() => update((s) => removeStage(s, i))}
+            pullsRow={!stacked ? pullsRow : null} />
+        ))}
+        <button type="button" className="btn btn--quiet btn--sm s-add s-add-banner" onClick={addBanner}>+ {G.addBanner}</button>
+        {stacked && (
+          <>
+            <div className="s-divider" />
+            <div className="s-row s-row--stack">
+              <span className="s-q" id="s-spend">{G.spendLabel}</span>
+              <span className="seg seg--sm" role="group" aria-labelledby="s-spend">
+                {[["shared", G.spendShared], ["fixed", G.spendFixed]].map(([v, label]) => (
+                  <button key={v} type="button" aria-pressed={(state.spend ?? "shared") === v} className={(state.spend ?? "shared") === v ? "is-on" : ""}
+                    onClick={() => update((s) => ({ ...s, spend: v, ...(v === "fixed" ? { mode: "budget" } : {}) }))}>{label}</button>
+                ))}
+              </span>
+              <HelpButton label={G.spendLabel} text={G.spendHelp} />
+            </div>
+            {!fixed && pullsRow}
+          </>
+        )}
       </section>
       <div className="s-side">
         <Answer state={state} update={update} engine={engine} theme={theme} onDetails={onDetails} isSaved={isSaved}
