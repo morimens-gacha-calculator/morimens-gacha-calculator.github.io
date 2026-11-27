@@ -1,7 +1,8 @@
 # Morimens Gacha Calculator
 
 Exact pull statistics for gacha banners with pity, soft pity, guarantees, memory
-rules and item pools (`banners/`), and exact covenant substat rerolls (`covenant/`). The
+rules and item pools (`banners/`), exact covenant substat rerolls (`covenant/`), and the pulls
+you get over time (`income/`). The
 site's root page sends you on to `banners/` (keeping old `#s=` share links working). Everything
 runs in the browser (no backend), so it can be hosted on GitHub Pages.
 
@@ -53,8 +54,9 @@ test fails) and on pull requests.
 | `src/export.js` | CSV and chart image downloads |
 | `src/components/` | UI: `PlanCard.jsx` and `AnswerCard.jsx` (the two cards, the same in both views), the banner plan tabs, goals and pity questions (simple view), plan rows and pity table (full view), chart, comparison, dialogs (Edit names, Banner rules, Settings) |
 | `src/Site.jsx`, `src/components/SiteParts.jsx` | The calculators: which one is open (from the address), the header with the ☰ menu (calculators and language), background, footer. To add a calculator: an entry in `CALCULATORS`, a folder with an `index.html` (copy `covenant/`), its name and description under `site` in each language file, and the page in `vite.config.js` |
+| `src/income/` | Pull income: `income.js` (the sources, totals, saving and links; other pages can read the saved income with `loadIncome()` and `incomeTotals()`), `IncomeApp.jsx` (its page) |
 | `src/covenant/` | The covenant substat calculator: `rates.js` (the game's weights and costs), `engine.js` (exact rerolls and materials), `CovenantApp.jsx` (its page) |
-| `index.html`, `banners/index.html`, `covenant/index.html` | The start page (sends you to `banners/`) and each calculator's own address (the same app, opened on that calculator) |
+| `index.html`, `banners/index.html`, `covenant/index.html`, `income/index.html` | The start page (sends you to `banners/`) and each calculator's own address (the same app, opened on that calculator) |
 | `src/styles.css` | All styling (colour tokens at the top) |
 | `src/i18n/en.js` | Every piece of interface text |
 | `src/site.config.js` | Background images (one per view), default preset, and the footer's site name, banner patch version and "Source code" link (`SOURCE_URL`) |
@@ -180,3 +182,19 @@ calculator (`functions/api/share.js` keeps which one, `functions/s/[id].js` open
 `tests/covenant.test.js` checks it against answers worked out by
 hand (a geometric wait, the three-Lv-8 Markov chain, and every one of the 64³ ways a reroll can
 come out).
+
+## Pull income
+
+`income/` lists where pulls come from: each source's silver, limited and standard pulls, and how
+often it gives them (every so many days). Every number can be changed, any source left out, and
+your own sources added. D-Tide's silver comes from the points you reach (300 silver for each of
+50, 100, 150, 250, 350, 375, 400, 425 and 450). Paid sources (the paid wheel, Basic and Premium
+curriculum, Moonphase vigil) start left out, and D-Tide at 425 points.
+
+The totals are per day, week and 28 days. Silver counts as limited pulls at 200 a pull; standard
+pulls count at a rate you pick (for characters or wheels, with limited ones that come off-rate
+not factored in, wanted or unwanted); sediment is the pulls times the sediment per pull (4.46366311
+at first). Everything is saved in the browser under `income-v1` for the pages that will plan
+pulls with it: `loadIncome()` and `incomeTotals()` in `src/income/income.js`. Share links keep
+the changes from the defaults in `#i=…` ("1", then base64url JSON). `tests/income.test.js` checks
+the numbers against the spreadsheet they come from.
