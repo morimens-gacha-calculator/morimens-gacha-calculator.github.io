@@ -250,26 +250,24 @@ function AnswerCard({ state, result, full, onOtherView }) {
 }
 const sameWay = (a, b) => Math.abs(a.rerolls - b.rerolls) <= 1e-9 * Math.max(1, a.rerolls) && Math.abs(a.materials.inQuills - b.materials.inQuills) <= 1e-9 * Math.max(1, a.materials.inQuills);
 
-// The odds behind it all, from the game's own numbers (rates.js)
+// The odds behind it all, from the game's own numbers (rates.js), in a few plain sentences like
+// the banners' descriptions
 function HowItWorks() {
   const T = useContextT();
-  const C = T.covenant, H = C.how;
+  const H = T.covenant.how;
   const L = T.numberLocale;
   const pct = (x) => `${(x * 100).toLocaleString(L, { maximumFractionDigits: 3 })}%`;
   const subs = PIECES[0].substats, SW = subs.reduce((a, x) => a + x.weight, 0);
   const LW = LEVELS.reduce((a, l) => a + l.weight, 0);
   const atLeast = (lv) => LEVELS.filter((l) => l.level >= lv).reduce((a, l) => a + l.weight, 0) / LW;
   const one = subs[0].weight / SW;
+  const levels = LEVELS.map((l) => H.level(l.level, pct(l.weight / LW))).join(", ");
   return (
-    <span className="goal-help">
-      <span className="goal-help-line">{H.lines}</span>
-      <span className="goal-help-line">{H.substats(pct(one))}</span>
-      <span className="goal-help-line">{H.levels}</span>
-      <ul>{LEVELS.map((l) => <li key={l.level}>{H.level(l.level, pct(l.weight / LW), pct(atLeast(l.level)))}</li>)}</ul>
-      <span className="goal-help-line">{H.example(pct(one * atLeast(NEW_GOAL_LEVEL)), pct(one * atLeast(8)))}</span>
-      <span className="goal-help-line">{H.value(valueText("critRate", 1, L), valueText("critRate", 8, L))}</span>
-      <span className="goal-help-line">{H.costs(fmtInt(COSTS.roseScript), COSTS.seals, COSTS.lockQuills[1], COSTS.lockQuills[2])}</span>
-    </span>
+    <>
+      {H.draw(pct(one), levels)}<br />
+      {H.example(pct(one * atLeast(NEW_GOAL_LEVEL)), pct(one * atLeast(8)))}<br />
+      {H.value(valueText("critRate", 1, L), valueText("critRate", 8, L))} {H.costs(fmtInt(COSTS.roseScript), COSTS.seals, COSTS.lockQuills[1], COSTS.lockQuills[2])}
+    </>
   );
 }
 
@@ -286,7 +284,7 @@ function PlanSection({ result, state, ways }) {
   const lineText = (m) => {
     const gs = state.goals.filter((_, i) => (m >> i) & 1);
     const g = gs.reduce((a, x) => (x.level > a.level ? x : a), gs[0]);
-    return C.shareGoal(C.stats[g.stat], g.level);
+    return C.share.goal(C.stats[g.stat].replace(/\s*Lv\.$/, ""), g.level);
   };
   // a situation by the goals its lines meet together (each line one goal): extra lines that only
   // repeat a goal change nothing, so such situations are one row

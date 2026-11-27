@@ -31,31 +31,42 @@ export function covenantLink(state) {
   return `${origin}${pathname}${search}#c=${encodeCovenant(state)}`;
 }
 
-// What a shared link says:
-//   16 rerolls on average, locking each line the moment it meets a goal
-//   Now: Crit. Rate Lv 8 · Keyflare Regen Lv. Lv 6 · Crit. Rate Lv 5
-//   Want: Crit. Rate Lv 6+ · Crit. DMG Lv 5+
-//   On average: 117,291 Rose script, 47 seals, 15.6 quills
-// title / detail: the preview card's (the answer; what's wanted)
-// way: whose numbers to give ("asTheyCome", the simple view's rule, or "cheapest")
+// What a shared link says, in the same shape as the banner calculator's: the answer first, then
+// what was asked (one thing per line), then the averages.
+//
+//   35 rerolls for a 90% chance
+//   • Now: Crit. Rate Lv 8, Keyflare Regen Lv 6, Crit. Rate Lv 5
+//   • Want: Crit. Rate Lv 6+, Crit. DMG Lv 6+
+//   • Locking: each line as soon as it meets a goal
+//   Average: 16 rerolls
+//   Materials, on average: 117,291 Rose script, 47 seals, 15.6 quills
+//
+// way: whose numbers ("asTheyCome", the simple view's rule, or "cheapest", the full view's).
+// title / detail: the preview card's (the answer; what's wanted and the average).
 export function covenantShare(state, result, T, way = "asTheyCome") {
-  const C = T.covenant;
+  const C = T.covenant, S = C.share;
   const L = T.numberLocale;
-  const name = (x) => C.shareStat(C.stats[x.stat], x.level);
-  const now = C.shareNow(state.lines.map(name).join(" · "));
-  const want = state.goals.length ? C.shareWant(state.goals.map((g) => C.shareGoal(C.stats[g.stat], g.level)).join(" · ")) : C.noGoals;
-  let headline = "", extra = "";
+  // "Keyflare Regen Lv." + "Lv 6" would say Lv twice
+  const name = (stat) => C.stats[stat].replace(/\s*Lv\.$/, "");
+  const asked = [
+    S.now(state.lines.map((l) => S.line(name(l.stat), l.level)).join(", ")),
+    state.goals.length ? S.want(state.goals.map((g) => S.goal(name(g.stat), g.level)).join(", ")) : null,
+    result && !result.done ? S.locking[way] : null,
+  ].filter(Boolean);
+  let headline = "", extra = [];
   if (result?.done) headline = C.done;
   else if (result) {
-    const best = result.ways.find((w) => w.key === way);
-    headline = (way === "cheapest" ? C.shareHeadline : C.shareHeadlineRule)(fmtInt(best.rerolls));
-    const q = best.materials.quills.toLocaleString(L, { maximumFractionDigits: 1 });
-    extra = C.shareMaterials(fmtInt(best.materials.roseScript), fmtInt(best.materials.seals), q);
+    const w = result.ways.find((x) => x.key === way);
+    const avg = S.average(Math.round(w.rerolls), fmtInt(w.rerolls));
+    headline = w.p90 != null ? S.forChance(w.p90, fmtInt(w.p90), "90%") : avg;
+    const q = w.materials.quills.toLocaleString(L, { maximumFractionDigits: 1 });
+    extra = [...(w.p90 != null ? [avg] : []), S.materials(fmtInt(w.materials.roseScript), fmtInt(w.materials.seals), q)];
   }
+  const want = asked[1] ?? asked[0];
   return {
     title: headline || want,
-    detail: headline ? want : now,
-    summary: [headline, now, want, extra].filter(Boolean).join("\n"),
+    detail: headline ? [want, extra[0]].filter(Boolean).join(" · ") : asked[0],
+    summary: [headline, ...asked.map((x) => `• ${x}`), ...extra].filter(Boolean).join("\n"),
   };
 }
 
