@@ -1043,3 +1043,52 @@ html[data-input="mouse"] .select:focus { border-color: var(--line-strong); outli
   .view-switch button { flex: 1 1 auto; padding: 0 6px; white-space: nowrap; font-size: 13px; }
   .header-buttons .btn { padding: 0 10px; }
 }
+
+/* ══ Calculators: the switch under the title ═════════════════════════════════════════════ */
+.calc-nav { align-self: flex-start; justify-self: start; width: max-content; margin-top: -6px; }
+.calc-nav a { height: 30px; padding: 0 14px; border-radius: 7px; display: inline-flex; align-items: center; text-decoration: none; color: var(--ink-2); font: 600 14px var(--font); white-space: nowrap; }
+.calc-nav a:hover:not(.is-on) { background: var(--action-soft); color: var(--ink); }
+.calc-nav a.is-on { background: var(--action); color: var(--action-ink); }
+@media (max-width: 640px) { .calc-nav { align-self: stretch; justify-self: stretch; width: auto; } .calc-nav a { flex: 1 1 0; justify-content: center; text-align: center; } }
+
+/* ══ Covenant substat calculator ═════════════════════════════════════════════════════════ */
+.cov-lines, .cov-goals { display: grid; gap: 8px; }
+.cov-row { display: grid; grid-template-columns: 22px minmax(0, 1fr) minmax(0, 132px); gap: 8px; align-items: center; }
+.cov-goal { grid-template-columns: minmax(0, 1fr) minmax(0, 132px) 32px; }
+.cov-goal-head { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 132px) 32px; gap: 8px; font-size: 12px; color: var(--muted); }
+.cov-n { width: 22px; height: 22px; border-radius: 50%; display: inline-grid; place-items: center; font-size: 12px; font-weight: 700; background: var(--action-soft); }
+.cov-stat { position: relative; display: block; min-width: 0; }
+.cov-stat .select { width: 100%; padding-left: 38px; }
+.cov-icon { position: absolute; left: 10px; top: 50%; translate: 0 -50%; width: 18px; height: 18px; object-fit: contain; pointer-events: none; opacity: 0.9; }
+.cov-level { width: 100%; font-variant-numeric: tabular-nums; }
+.cov-card .s-add { justify-self: center; }
+.cov-done { font-size: 22px; }
+.cov-next { display: flex; gap: 10px; align-items: flex-start; margin: 0; padding: 10px 12px; border-radius: var(--r-md); background: var(--action-soft); border: 1px solid var(--action-line); font-size: 14.5px; line-height: 1.45; }
+.cov-next-icon { flex: none; }
+.cov-mats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 0; }
+.cov-mat dd { display: flex; align-items: center; gap: 8px; }
+.cov-mat dd img { width: 28px; height: 28px; object-fit: contain; flex: none; }
+.cov-inquills { margin-top: -4px; }
+.cov-ways { display: grid; gap: 8px; }
+.cov-way { display: grid; gap: 1px; min-width: 0; }
+.cov-way small { font-size: 12px; color: var(--muted); font-weight: 400; }
+.st-name > span.cov-way { white-space: normal; overflow: visible; text-overflow: clip; }
+.cov-table .st-head .st-num { max-width: 90px; }
+.st-row.is-best > * { background: rgba(232, 176, 79, 0.1); }
+.st-row.is-best .cov-way > span { color: var(--gold); font-weight: 700; }
+@media (max-width: 640px) {
+  /* a line stays on one row: substat, level */
+  .cov-row { grid-template-columns: 20px minmax(0, 1fr) 118px; gap: 6px; }
+  .cov-goal { grid-template-columns: minmax(0, 1fr) 118px 28px; }
+  .cov-goal-head { grid-template-columns: minmax(0, 1fr) 118px 28px; }
+  .cov-row .select { font-size: 14px; padding-right: 24px; background-position: right 8px center; }
+  .cov-stat .select { padding-left: 32px; }
+  .cov-icon { left: 8px; }
+  .cov-level { padding-left: 8px; }
+  .cov-mats { gap: 6px; }
+  .cov-mat { padding: 8px; }
+  .cov-mat dd { font-size: 17px; gap: 5px; flex-wrap: wrap; }
+  .cov-mat dd img { width: 22px; height: 22px; }
+  .st-row.is-best { background: rgba(232, 176, 79, 0.1); }
+  .st-row.is-best > * { background: none; }
+}
