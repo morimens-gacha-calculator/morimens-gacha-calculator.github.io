@@ -6,7 +6,8 @@ import { HelpButton } from "../components/Help.jsx";
 import NumberInput from "../components/NumberInput.jsx";
 import { phoneLayout, themeColors, usePhone, yAxis } from "../components/ResultChart.jsx";
 import { Notices, useShare } from "../components/Share.jsx";
-import { shareCard } from "../export.js";
+import { download, fileName, shareCard } from "../export.js";
+import { fmtDate, planImage, planLines, planText } from "./export.js";
 import { postShortLink } from "../share.js";
 import { incomeTotals, loadIncome } from "../income/income.js";
 import { solvePlan } from "./engine.js";
@@ -38,6 +39,7 @@ export const pct = (p, L) => {
 };
 const tone = (p) => (p >= 0.9 ? "is-good" : p >= 0.5 ? "is-mid" : "is-bad");
 const WEEK = [1, 2, 3, 4, 5, 6, 0]; // Monday first, as the first rerun day
+const VIEW_KEY = "reruns-view";
 
 // The plan worked out in a worker (the newest question wins); in the page if workers aren't there
 function usePlanResult(query) {
@@ -63,6 +65,8 @@ export default function RerunsApp({ onGo }) {
   const T = useMemo(() => withWording(lang, false), [lang]);
   const R = T.reruns;
   const [plan, setPlan] = useState(() => loadPlan());
+  const [view, setViewState] = useState(() => { try { return localStorage.getItem(VIEW_KEY) === "compact" ? "compact" : "full"; } catch { return "full"; } });
+  const setView = (v) => { setViewState(v); try { localStorage.setItem(VIEW_KEY, v); } catch { /* no storage */ } };
   useEffect(() => { savePlan(plan); }, [plan]);
   // the income from the Pull income page, and today's date: read again when you come back here
   const [income, setIncome] = useState(() => loadIncome());
@@ -119,12 +123,18 @@ export default function RerunsApp({ onGo }) {
       <main className="main">
         <section className="content-box is-simple" aria-label={R.pageTitle}>
           <SiteHeader calc="reruns" onGo={onGo} lang={lang} onLang={(code) => { saveLang(code); setLang(code); }}>
+            <div className="view-switch" role="group" aria-label={T.app.viewLabel}>
+              <button type="button" aria-pressed={view === "full"} className={view === "full" ? "is-on" : ""} onClick={() => setView("full")}>{R.viewFull}</button>
+              <button type="button" aria-pressed={view === "compact"} className={view === "compact" ? "is-on" : ""} onClick={() => setView("compact")}>{R.viewCompact}</button>
+            </div>
             <button type="button" className="btn btn--primary header-share" onClick={share} title={R.shareTitle}>{T.app.share}</button>
           </SiteHeader>
           <Notices shareMsg={shareMsg} clearShare={clearShare}
             canUndo={!!undo} undoText={undo?.text} onUndo={() => { setPlan(undo.plan); setUndo(null); }} onDismissUndo={() => setUndo(null)}
             linkError={linkError} onDismissError={() => setLinkError(false)} />
-          {today >= DAYS ? <p className="s-hint rr-over">{R.over}</p> : (
+          {today >= DAYS ? <p className="s-hint rr-over">{R.over}</p> : view === "compact" ? (
+            <CompactPlan plan={plan} query={query} result={result} banks={banks} today={today} />
+          ) : (
             <>
               <div className="app-layout">
                 <BankCard plan={plan} setPlan={setPlan} income={income} today={today} onGo={onGo} />
@@ -207,7 +217,6 @@ function BankCard({ plan, setPlan, income, today, onGo }) {
   );
 }
 const giftValue = (o, R, L) => [o.pulls ? R.pullsN(o.pulls.toLocaleString(L)) : null, o.silver ? R.silverN(o.silver.toLocaleString(L)) : null].filter(Boolean).join(", ");
-const fmtDate = (d, L, weekday = false) => d.toLocaleDateString(L, { day: "numeric", month: "short", ...(weekday ? { weekday: "short" } : {}) });
 
 // ── Right: the answer and the chart ──
 function AnswerCard({ plan, query, result, busy, banks, today }) {
@@ -378,6 +387,73 @@ function Calendar({ plan, setPlan, query, result, today, onClear }) {
   );
 }
 
+// ── Compact: the plan alone, to save as a picture or copy as text ──
+function planSummary(query, result, banks, T) {
+  const R = T.reruns, L = T.numberLocale;
+  const planned = query.banners.filter((b) => b.copies > 0);
+  const copies = planned.reduce((a, b) => a + b.copies, 0);
+  const days = new Set(planned.map((b) => b.at)).size;
+  if (!copies) return R.compact.summaryNone(int(banks[DAYS - 1], L), fmtDate(dateOf(DAYS - 1), L));
+  return R.compact.summary(int(copies, L), int(days, L), result ? pct(result.chance, L) : "…");
+}
+function CompactPlan({ plan, query, result, banks, today }) {
+  const T = useContextT();
+  const R = T.reruns, C = R.compact;
+  const L = T.numberLocale;
+  const summary = planSummary(query, result, banks, T);
+  const [note, setNote] = useState(null); // { ok, text? }
+  const copy = async () => {
+    const text = planText(plan, today, T, summary);
+    try { await navigator.clipboard.writeText(text); setNote({ ok: true }); }
+    catch { setNote({ ok: false, text }); }
+  };
+  const save = async () => {
+    const blob = await planImage({ plan, today, T, summary, portrait });
+    if (blob) download(`${fileName(C.fileName)}.jpg`, blob);
+  };
+  return (
+    <section className="s-card rr-compact" aria-label={C.title}>
+      <div className="rr-cal-head">
+        <h2 className="s-lead">{C.title}</h2>
+        <span className="s-hint">{summary}</span>
+        <span className="rr-compact-actions">
+          <button type="button" className="btn btn--sm" onClick={save}>{C.saveImage}</button>
+          <button type="button" className="btn btn--sm" onClick={copy}>{C.copyText}</button>
+        </span>
+      </div>
+      {note && (note.ok ? <p className="s-hint rr-copied" role="status">{C.copied}</p> : (
+        <div className="rr-copy-fail" role="status">
+          <p className="s-hint">{C.copyFailed}</p>
+          <textarea className="custom-input" readOnly rows={Math.min(12, note.text.split("\n").length)} value={note.text} onFocus={(e) => e.target.select()} />
+        </div>
+      ))}
+      <div className="rr-mini">
+        {WEEK.map((wd) => <span key={wd} className="rr-wd" aria-hidden="true">{new Date(2026, 10, 29 + (wd || 7)).toLocaleDateString(L, { weekday: "short" })}</span>)}
+        {CHARACTERS.map((name, day) => {
+          const past = day < today;
+          const planned = KINDS.filter((k) => copiesOn(plan, k, day, today) > 0);
+          return (
+            <div key={day} className={`rr-mt ${past ? "is-past" : planned.length ? "is-planned" : ""}`}>
+              <div className="rr-por">
+                <img src={portrait(name)} alt="" loading="lazy" />
+                <span className="rr-date">{fmtDate(dateOf(day), L)}</span>
+              </div>
+              <span className="rr-mt-name">{name}</span>
+              <span className="rr-mt-lv">
+                {past ? R.ended : planned.length ? planned.map((k) => (
+                  <span key={k} className="rr-mt-line">
+                    {k === "wheel" && `${R.kindsShort.wheel} `}{LEVELS[levelBefore(plan, k, day, today)]} → <b>{LEVELS[plan.goals[day][k]]}</b>
+                  </span>
+                )) : LEVELS[levelBefore(plan, "char", day, today)]}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 // What a shared plan says, in the same shape as the other calculators: the answer, then the
 // setup (one thing per line), then the rest; the link goes on its own line after it.
 //
@@ -399,11 +475,7 @@ export function rerunsShare(plan, query, result, income, today, T) {
   const { char: c, wheel: w } = plan.pity;
   if (c.k || c.l || w.k || w.l) setup.push(S.pity(c.k, c.l, w.k, w.l));
   setup.push(S.income((Math.round(incomeTotals(income).perDay.pulls * 100) / 100).toLocaleString(L), gifts.join(", ")));
-  for (let day = Math.max(0, today); day < DAYS; day++) {
-    const parts = KINDS.filter((k) => copiesOn(plan, k, day, today) > 0)
-      .map((k) => S.goal(k, LEVELS[levelBefore(plan, k, day, today)], LEVELS[plan.goals[day][k]]));
-    if (parts.length) setup.push(`${fmtDate(dateOf(day), L)} ${CHARACTERS[day]}: ${parts.join(", ")}`);
-  }
+  setup.push(...planLines(plan, today, T));
   const last = result?.days?.[result.days.length - 1];
   const headline = copies && result ? S.headline(pct(result.chance, L), int(copies, L)) : S.headlineNone(int(banks[DAYS - 1], L), end);
   const extra = copies && result && last ? [S.cost(int(result.spent, L)), S.left(end, int(last.p50, L), int(last.p10, L), int(last.p90, L))] : [];

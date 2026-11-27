@@ -1247,3 +1247,25 @@ select.rr-small { padding: 0 22px 0 10px; }
   .rr-chart { height: 240px; }
   .rr-por { aspect-ratio: 16 / 10; }
 }
+/* the compact view: the plan alone, small tiles */
+.rr-compact-actions { margin-left: auto; display: flex; gap: 8px; }
+.rr-copied { margin-top: 8px; color: var(--ok); }
+.rr-copy-fail { margin-top: 8px; display: grid; gap: 6px; }
+.rr-copy-fail textarea { height: auto; padding: 8px 10px; font: 13px/1.45 var(--font); resize: vertical; }
+.rr-mini { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; margin-top: 12px; }
+.rr-mt { background: var(--surface-3); border: 1px solid transparent; border-radius: var(--r-md); overflow: hidden; display: flex; flex-direction: column; }
+.rr-mt.is-planned { border-color: var(--gold); }
+.rr-mt:not(.is-planned) img { filter: grayscale(1) brightness(0.55); }
+.rr-mt-name { padding: 6px 8px 0; font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rr-mt:not(.is-planned) .rr-mt-name { color: var(--muted); }
+.rr-mt-lv { padding: 2px 8px 8px; font-size: 13px; color: var(--muted); display: grid; gap: 1px; }
+.rr-mt-line { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rr-mt-line b { color: var(--gold); font-weight: 600; }
+@media (max-width: 900px) { .rr-mini { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); } }
+@media (max-width: 640px) {
+  .rr-mini { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+  .rr-compact-actions { margin-left: 0; width: 100%; }
+  .rr-compact-actions .btn { flex: 1; }
+  .rr-mt-name { font-size: 13px; }
+  .rr-mt-lv { font-size: 12px; }
+}
