@@ -50,7 +50,7 @@ export async function planImage({ plan, today, T, summary, portrait }) {
     && probe.measureText(`${LEVELS[levelBefore(plan, k, day, today)]} → ${LEVELS[plan.goals[day][k]]}`).width > colText(tileW)));
   const textH = tooLong ? 94 : 76;
   const W = pad * 2 + cols * tileW + (cols - 1) * gap;
-  const head = 120;
+  const head = 144; // title, summary, then the weekdays over the columns
   const H = head + rows * (photoH + textH) + (rows - 1) * gap + pad + 26;
   const scale = 2;
   const out = document.createElement("canvas");
@@ -63,6 +63,13 @@ export async function planImage({ plan, today, T, summary, portrait }) {
   ctx.fillText(R.compact.title, pad, pad + 26);
   ctx.fillStyle = C.ink2; ctx.font = `500 17px ${font}`;
   ctx.fillText(fit(ctx, summary, W - pad * 2), pad, pad + 56);
+  // Mon … Sun over the columns, as on the page (the first rerun day is a Monday)
+  ctx.fillStyle = C.muted; ctx.font = `500 13px ${font}`; ctx.textAlign = "center";
+  for (let i = 0; i < cols; i++) {
+    const wd = dateOf(i).toLocaleDateString(L, { weekday: "short" });
+    ctx.fillText(wd, pad + i * (tileW + gap) + tileW / 2, head - 10);
+  }
+  ctx.textAlign = "left";
 
   const images = await Promise.all(CHARACTERS.map((n) => loadImage(portrait(n))));
   const round = (x, y, w, h, r) => { ctx.beginPath(); ctx.roundRect(x, y, w, h, r); };
