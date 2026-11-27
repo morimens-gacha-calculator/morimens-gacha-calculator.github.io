@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Line } from "react-chartjs-2";
 import { I18nContext, useT as useContextT, withWording } from "../i18n/index.js";
 import { fmtInt, newId } from "../model.js";
-import { Background, CalcNav, LanguagePicker, SiteFooter, loadLang, saveLang } from "../components/SiteParts.jsx";
+import { Background, SiteFooter, SiteHeader, loadLang, saveLang } from "../components/SiteParts.jsx";
 import { HelpButton } from "../components/Help.jsx";
 import { TrashIcon } from "../components/Icon.jsx";
 import { downloadWithLabels, phoneLayout, themeColors, usePhone, usePopup, yAxis } from "../components/ResultChart.jsx";
@@ -69,13 +69,7 @@ export default function CovenantApp({ onGo }) {
       <Background view="covenant" />
       <main className="main">
         <section className="content-box is-simple" aria-label={C.pageTitle}>
-          <div className="header-row">
-            <h1 className="main-title">{T.app.title}</h1>
-            <div className="row header-buttons">
-              <LanguagePicker lang={lang} onChange={(code) => { saveLang(code); setLang(code); }} />
-            </div>
-          </div>
-          <CalcNav calc="covenant" onGo={onGo} />
+          <SiteHeader calc="covenant" onGo={onGo} lang={lang} onLang={(code) => { saveLang(code); setLang(code); }} />
           <div className="app-layout">
             <PieceCard state={state} setState={setState} />
             <div className="s-side">

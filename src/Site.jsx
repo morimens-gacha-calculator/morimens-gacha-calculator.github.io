@@ -2,8 +2,8 @@ import { lazy, Suspense, useEffect, useState } from "react";
 import App from "./App.jsx";
 import { hrefOf, whereAmI } from "./components/SiteParts.jsx";
 
-// The calculators: which one is open follows the address (the pull calculator at the root,
-// the covenant one at covenant/). Switching keeps the page and changes the address; Back works.
+// The calculators: which one is open follows the address (banners/, covenant/; the root page
+// sends you to banners/). Switching keeps the page and changes the address; Back works.
 const CovenantApp = lazy(() => import("./covenant/CovenantApp.jsx"));
 
 export default function Site() {

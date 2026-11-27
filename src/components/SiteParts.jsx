@@ -1,46 +1,106 @@
+import { useEffect, useRef, useState } from "react";
 import { LOCALES, browserLocale, setLocale, useT } from "../i18n/index.js";
 import { BACKGROUNDS, BANNERS_PATCH, SITE_NAME, SOURCE_URL } from "../site.config.js";
 
 // What every calculator on the site shares: which calculator is open (its own address, so links
-// and reloads keep it), the language, the background and the footer.
+// and reloads keep it), the header with the menu of calculators, the language, the background
+// and the footer.
 
-// The calculators, in the order of the switch under the title; path: where each one lives,
-// from the site's root (each has its own index.html, so the address works on any host)
+// The calculators, in the menu's order; path: where each one lives, from the site's root (each
+// has its own index.html, so the address works on any host; the root page sends you to the
+// first one); icon: drawn in the menu
 export const CALCULATORS = [
-  { key: "pulls", path: "" },
+  { key: "banners", path: "banners/" },
   { key: "covenant", path: "covenant/" },
 ];
-const others = CALCULATORS.filter((c) => c.path);
 // the open calculator and the site's root, from the address
 export function whereAmI(pathname = location.pathname) {
-  for (const c of others) {
+  for (const c of CALCULATORS) {
     const m = pathname.match(new RegExp(`^(.*/)${c.path.replace(/\/$/, "")}(/|/index\\.html)?$`));
     if (m) return { calc: c.key, root: m[1] };
   }
-  return { calc: "pulls", root: pathname.replace(/[^/]*$/, "") };
+  return { calc: CALCULATORS[0].key, root: pathname.replace(/[^/]*$/, "") };
 }
 export const hrefOf = (root, key) => root + (CALCULATORS.find((c) => c.key === key)?.path ?? "");
 
-// The switch between calculators, under the site's title. Plain links (they open in a new tab
-// too); a normal click switches without reloading the page.
-export function CalcNav({ calc, onGo }) {
+// The header of every calculator: the menu button, the site's name with the open calculator's
+// name under it, and the calculator's own buttons (children) on the right
+export function SiteHeader({ calc, onGo, lang, onLang, children }) {
   const T = useT();
-  const { root } = whereAmI();
+  const [open, setOpen] = useState(false);
   return (
-    <nav className="seg calc-nav" aria-label={T.site.navLabel}>
-      {CALCULATORS.map((c) => (
-        <a key={c.key} href={hrefOf(root, c.key)} className={calc === c.key ? "is-on" : ""} aria-current={calc === c.key ? "page" : undefined}
-          onClick={(e) => {
-            if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-            e.preventDefault();
-            onGo(c.key);
-          }}>
-          {T.site.calcs[c.key]}
-        </a>
-      ))}
-    </nav>
+    <div className="header-row">
+      <div className="site-brand">
+        <button type="button" className="menu-btn" onClick={() => setOpen(true)} aria-label={T.site.openMenu} aria-haspopup="dialog" aria-expanded={open} title={T.site.openMenu}>
+          <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
+        </button>
+        <div className="site-titles">
+          <h1 className="main-title">{T.app.title}</h1>
+          <p className="calc-name">{T.site.calcs[calc]}</p>
+        </div>
+      </div>
+      {children && <div className="row header-buttons">{children}</div>}
+      {open && <SiteMenu calc={calc} onGo={onGo} lang={lang} onLang={onLang} onClose={() => setOpen(false)} />}
+    </div>
   );
 }
+
+// The menu: the calculators (plain links: they open in a new tab too; a normal click switches
+// without reloading the page) and the language. A panel from the left on every screen size;
+// Escape, × or a click outside closes it.
+function SiteMenu({ calc, onGo, lang, onLang, onClose }) {
+  const T = useT();
+  const ref = useRef(null);
+  const { root } = whereAmI();
+  useEffect(() => {
+    const d = ref.current;
+    if (d && !d.open) d.showModal?.();
+    d?.querySelector(".is-on")?.focus();
+    return () => { if (d?.open) d.close(); };
+  }, []);
+  return (
+    <dialog ref={ref} className="site-menu" aria-label={T.site.menuTitle}
+      onCancel={(e) => { e.preventDefault(); onClose(); }}
+      onClick={(e) => { if (e.target === ref.current) onClose(); }}>
+      <div className="site-menu-inner">
+        <div className="site-menu-head">
+          <span className="site-menu-title">{T.site.menuTitle}</span>
+          <button type="button" className="notice-close" onClick={onClose} aria-label={T.site.closeMenu} title={T.site.closeMenu}>×</button>
+        </div>
+        <nav aria-label={T.site.navLabel}>
+          <ul className="site-menu-list">
+            {CALCULATORS.map((c) => (
+              <li key={c.key}>
+                <a href={hrefOf(root, c.key)} className={`site-menu-item ${calc === c.key ? "is-on" : ""}`} aria-current={calc === c.key ? "page" : undefined}
+                  onClick={(e) => {
+                    if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+                    e.preventDefault();
+                    onClose();
+                    onGo(c.key);
+                  }}>
+                  <span className="site-menu-icon" aria-hidden="true">{MENU_ICONS[c.key]}</span>
+                  <span className="site-menu-text">
+                    <span className="site-menu-name">{T.site.calcs[c.key]}</span>
+                    <span className="site-menu-desc">{T.site.descs[c.key]}</span>
+                  </span>
+                </a>
+              </li>
+            ))}
+          </ul>
+        </nav>
+        <div className="site-menu-foot">
+          <LanguagePicker lang={lang} onChange={onLang} labelled />
+        </div>
+      </div>
+    </dialog>
+  );
+}
+const MENU_ICONS = {
+  // a chance curve
+  banners: <svg width="22" height="22" viewBox="0 0 24 24" focusable="false"><path d="M3 20h18M4 19c3-1 4-12 8-13s5 6 8 6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>,
+  // substat lines, one locked
+  covenant: <svg width="22" height="22" viewBox="0 0 24 24" focusable="false"><path d="M3 6h10M3 12h8M3 18h10" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /><rect x="15" y="12" width="6.5" height="6" rx="1.2" fill="none" stroke="currentColor" strokeWidth="1.6" /><path d="M16.5 12v-1.6a1.75 1.75 0 0 1 3.5 0V12" fill="none" stroke="currentColor" strokeWidth="1.6" /></svg>,
+};
 
 // The language, read before the first render so charts and texts are right from the start
 const LANG_KEY = "banner-calc-lang";
@@ -57,12 +117,12 @@ export function saveLang(code) {
   document.documentElement.lang = code;
   try { localStorage.setItem(LANG_KEY, code); } catch { /* no storage */ }
 }
-export function LanguagePicker({ lang, onChange }) {
+export function LanguagePicker({ lang, onChange, labelled = false }) {
   const T = useT();
   if (Object.keys(LOCALES).length < 2) return null;
   return (
-    <label className="inline-field">
-      <span className="sr-only">{T.app.language}</span>
+    <label className={labelled ? "site-lang" : "inline-field"}>
+      <span className={labelled ? "s-eyebrow" : "sr-only"}>{T.app.language}</span>
       <select className="select" value={lang} onChange={(e) => onChange(e.target.value)} aria-label={T.app.language}>
         {Object.entries(LOCALES).map(([code, L]) => <option key={code} value={code}>{L.langName}</option>)}
       </select>

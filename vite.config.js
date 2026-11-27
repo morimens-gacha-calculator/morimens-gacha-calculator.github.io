@@ -7,6 +7,7 @@ export default defineConfig({
   base: "./",
   plugins: [react()],
   worker: { format: "es" },
-  // one page per calculator (the same app; each address opens its own calculator)
-  build: { rollupOptions: { input: { main: resolve(import.meta.dirname, "index.html"), covenant: resolve(import.meta.dirname, "covenant/index.html") } } },
+  // one page per calculator (the same app; each address opens its own calculator), and the
+  // start page, which sends you to banners/
+  build: { rollupOptions: { input: Object.fromEntries(["index.html", "banners/index.html", "covenant/index.html"].map((f) => [f.replace(/\/?index\.html$/, "") || "start", resolve(import.meta.dirname, f)])) } },
 });
