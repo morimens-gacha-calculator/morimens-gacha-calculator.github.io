@@ -6,7 +6,9 @@ import { Background, SiteFooter, SiteHeader, loadLang, saveLang } from "../compo
 import { HelpButton } from "../components/Help.jsx";
 import { TrashIcon } from "../components/Icon.jsx";
 import { downloadWithLabels, phoneLayout, themeColors, usePhone, usePopup, yAxis } from "../components/ResultChart.jsx";
-import { downloadCsv } from "../export.js";
+import { downloadCsv, shareCard } from "../export.js";
+import { Notices, useShare } from "../components/Share.jsx";
+import { covenantCode, covenantLink, covenantShare, covenantShortLink, decodeCovenant } from "./share.js";
 import { linesToLock, solveCovenant } from "./engine.js";
 import { LEVELS, LINES, MAX_GOALS, SUBSTATS } from "./rates.js";
 
@@ -64,12 +66,49 @@ export default function CovenantApp({ onGo }) {
 
   const result = useMemo(() => (state.goals.length ? solveCovenant({ lines: state.lines, goals: state.goals }) : null), [state]);
 
+  // a shared link (#c=…) opens its covenant; Undo brings yours back
+  const [undoState, setUndoState] = useState(null);
+  const [linkError, setLinkError] = useState(false);
+  const stateRef = useRef(state);
+  stateRef.current = state;
+  useEffect(() => {
+    // on opening the page, and when a link is pasted into this tab's address bar
+    const open = () => {
+      const code = covenantCode(location.hash);
+      if (code == null) return;
+      const shared = decodeCovenant(code);
+      if (shared) {
+        setUndoState(stateRef.current);
+        setState({ lines: shared.lines, goals: shared.goals.map((g) => ({ ...g, id: newId() })) });
+      } else setLinkError(true);
+      history.replaceState(null, "", location.pathname + location.search);
+    };
+    open();
+    addEventListener("hashchange", open);
+    return () => removeEventListener("hashchange", open);
+  }, []);
+  // Share: a short link with its own preview card where the site's server functions are there
+  // (Cloudflare), else the long "#c=" link
+  const { share, shareMsg, clearShare } = useShare(async () => {
+    const parts = covenantShare(state, result, T);
+    let image = null;
+    try { image = shareCard(parts, document.querySelector(".chart-container canvas")); } catch { /* text-only card */ }
+    const url = (await covenantShortLink(state, parts, image)) ?? covenantLink(state);
+    return { url, summary: parts.summary };
+  });
+
   return (
     <I18nContext.Provider value={T}>
       <Background view="covenant" />
       <main className="main">
         <section className="content-box is-simple" aria-label={C.pageTitle}>
-          <SiteHeader calc="covenant" onGo={onGo} lang={lang} onLang={(code) => { saveLang(code); setLang(code); }} />
+          <SiteHeader calc="covenant" onGo={onGo} lang={lang} onLang={(code) => { saveLang(code); setLang(code); }}>
+            <button type="button" className="btn btn--primary header-share" onClick={share} title={C.shareTitle}>{T.app.share}</button>
+          </SiteHeader>
+          <Notices shareMsg={shareMsg} clearShare={clearShare}
+            canUndo={!!undoState} undoText={T.app.sharedLoaded}
+            onUndo={() => { setState(undoState); setUndoState(null); }} onDismissUndo={() => setUndoState(null)}
+            linkError={linkError} onDismissError={() => setLinkError(false)} />
           <div className="app-layout">
             <PieceCard state={state} setState={setState} />
             <div className="s-side">
@@ -167,20 +206,17 @@ function AnswerCard({ state, result }) {
       <>
         <p className="s-big">{highlight(C.average, fmtInt(best.rerolls))}</p>
         {best.p90 != null && <p className="s-second">{highlight(C.nine, fmtInt(best.p90))}</p>}
-        <p className="cov-next">
-          <span className="cov-next-icon" aria-hidden="true">🔒</span>
-          <span><strong>{C.next}</strong> {lock.length ? C.nextLock(what) : C.nextNoLock} <span className="muted">{C.nextAfter}</span></span>
-        </p>
-        <span className="s-eyebrow">{C.averages}</span>
-        <div className="cov-mats" aria-label={C.averages}>
+        <p className="s-sure cov-next">{C.next} {lock.length ? C.nextLock(what) : C.nextNoLock}</p>
+        <p className="s-hint">{C.nextAfter}</p>
+        <dl className="s-stats cov-mats">
           {["roseScript", "seals", "quills"].map((k) => (
             <div key={k} className="s-stat cov-mat">
-              <dt>{C.materials[k]}</dt>
+              <dt>{C.matAverage[k]}</dt>
               <dd><img src={icon(k === "roseScript" ? "rose-script" : k)} alt="" aria-hidden="true" />{k === "quills" ? fmtQuills(best.materials.quills, L) : fmtBig(best.materials[k], L)}</dd>
             </div>
           ))}
-        </div>
-        <p className="s-hint cov-inquills">{highlight(C.inQuills, fmtQuills(best.materials.inQuills, L))}</p>
+        </dl>
+        <p className="s-hint">{C.inQuills(fmtQuills(best.materials.inQuills, L))}</p>
         <WaysTable ways={ways} />
         <WaysChart ways={ways} best={best} />
       </>
@@ -205,20 +241,16 @@ function WaysTable({ ways }) {
   const cols = [C.colRerolls, C.col90, C.materials.roseScript, C.materials.seals, C.materials.quills, C.colInQuills];
   return (
     <div className="cov-ways">
-      <div className="s-eyebrow-row">
-        <span className="s-eyebrow">{C.waysTitle}</span>
-        <HelpButton label={C.waysTitle} text={C.waysHelp} />
-      </div>
       <div className="st-table cov-table" role="table" aria-label={C.waysTitle} style={{ "--cols": cols.length }}>
         <div className="st-row st-head" role="row">
-          <span role="columnheader" />
+          <span role="columnheader" className="cov-ways-head">{C.waysTitle}<HelpButton label={C.waysTitle} text={C.waysHelp} /></span>
           {cols.map((c) => <span key={c} role="columnheader" className="st-num">{c}</span>)}
         </div>
         {ways.map((w, i) => {
           const [name, sub] = wayName(w, C);
           const values = [fmtBig(w.rerolls, L), w.p90 != null ? fmtBig(w.p90, L) : "-", fmtBig(w.materials.roseScript, L), fmtBig(w.materials.seals, L), fmtQuills(w.materials.quills, L), fmtQuills(w.materials.inQuills, L)];
           return (
-            <div key={w.key} className={`st-row ${w.key === "cheapest" ? "is-best" : ""}`} role="row">
+            <div key={w.key} className="st-row" role="row">
               <span className="st-name" role="cell">
                 <span className="swatch" style={{ "--c": `var(--s${(i % 6) + 1})` }} aria-hidden="true" />
                 <span className="cov-way"><span>{name}</span>{sub && <small>{sub}</small>}</span>

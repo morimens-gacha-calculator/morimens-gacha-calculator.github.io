@@ -168,6 +168,9 @@ meet, so the state before a reroll is the 3 lines' goal masks (at most 120 state
 iteration finds the locking choices with the fewest quills on average ("Cheapest") and the
 fewest rerolls with up to 2, 1 or no locks; linear equations give the averages, and powers of
 the transition matrix give the chance by reroll, so even goals that take millions of rerolls
-are answered in milliseconds. `tests/covenant.test.js` checks it against answers worked out by
+are answered in milliseconds. Share links keep a covenant in `#c=…` (`src/covenant/share.js`:
+"1", then 2 digits per line and goal, substat and level); short links (`/s/…`) work for every
+calculator (`functions/api/share.js` keeps which one, `functions/s/[id].js` opens it).
+`tests/covenant.test.js` checks it against answers worked out by
 hand (a geometric wait, the three-Lv-8 Markov chain, and every one of the 64³ ways a reroll can
 come out).

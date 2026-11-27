@@ -87,3 +87,17 @@ test("very long waits stay fast and exact", () => {
   assert.equal(none.median, Math.ceil(Math.log(0.5) / Math.log(1 - P8 ** 3)));
   assert.ok(performance.now() - t < 2000);
 });
+
+// Shared links: "#c=" + "1" + 2 digits (substat, level) per line and goal
+import { decodeCovenant, encodeCovenant, CODE_PATTERN } from "../src/covenant/share.js";
+import { readFileSync } from "node:fs";
+test("a covenant goes through a link and back", () => {
+  const s = { lines: [{ stat: "critRate", level: 8 }, { stat: "keyflareRegen", level: 6 }, { stat: "critRate", level: 5 }], goals: [{ stat: "critRate", level: 6 }, { stat: "critDmg", level: 5 }] };
+  assert.equal(encodeCovenant(s), "10856050615");
+  assert.deepEqual(decodeCovenant("10856050615"), s);
+  assert.deepEqual(decodeCovenant(encodeCovenant({ ...s, goals: [] })), { ...s, goals: [] });
+  for (const bad of ["", "0085605", "1085605061", "108560506150615", "1885605", "1095605", "1x85605"]) assert.equal(decodeCovenant(bad), null, bad);
+  // the server checks codes the same way
+  const server = readFileSync(new URL("../functions/api/share.js", import.meta.url), "utf8");
+  assert.ok(server.includes(String(CODE_PATTERN)), "functions/api/share.js: the same pattern for covenant codes");
+});
