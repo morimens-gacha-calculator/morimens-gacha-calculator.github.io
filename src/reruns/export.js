@@ -39,11 +39,11 @@ export async function planImage({ plan, today, T, summary, portrait }) {
   const cs = getComputedStyle(document.documentElement);
   const v = (n, d) => cs.getPropertyValue(n).trim() || d;
   const font = v("--font", "system-ui, sans-serif");
-  const C = { bg: v("--bg", "#12181e"), tile: v("--surface-3", "#26313b"), ink: v("--ink", "#e8ebe7"), ink2: v("--ink-2", "#c3cac8"), muted: v("--muted", "#8d9a9c"), gold: v("--gold", "#e8b04f"), inset: v("--inset", "#121920") };
+  const C = { bg: v("--bg", "#12181e"), tile: v("--surface-2", "#1c242d"), line: v("--line", "#2c3843"), ink: v("--ink", "#e8ebe7"), ink2: v("--ink-2", "#c3cac8"), muted: v("--muted", "#8d9a9c"), gold: v("--gold", "#e8b04f"), inset: v("--inset", "#121920") };
   const cols = 7, rows = Math.ceil(DAYS / cols);
-  const pad = 40, gap = 12, tileW = 180, photoH = 135, textH = 84;
+  const pad = 40, gap = 10, tileW = 180, photoH = 180, textH = 70;
   const W = pad * 2 + cols * tileW + (cols - 1) * gap;
-  const head = 128;
+  const head = 120;
   const H = head + rows * (photoH + textH) + (rows - 1) * gap + pad + 26;
   const scale = 2;
   const out = document.createElement("canvas");
@@ -74,34 +74,36 @@ export async function planImage({ plan, today, T, summary, portrait }) {
     if (im) {
       // cover the photo area, a little above the middle
       const s = Math.max(tileW / im.width, photoH / im.height), w = im.width * s, h = im.height * s;
-      ctx.filter = past || !lines.length ? "grayscale(1) brightness(0.55)" : "none";
-      ctx.drawImage(im, x + (tileW - w) / 2, y + (photoH - h) * 0.35, w, h);
+      ctx.filter = past || !lines.length ? "grayscale(1) brightness(0.6)" : "none";
+      ctx.drawImage(im, x + (tileW - w) / 2, y + (photoH - h) / 2, w, h);
       ctx.filter = "none";
     }
     ctx.restore();
-    if (lines.length) { round(x + 1, y + 1, tileW - 2, photoH + textH - 2, 10); ctx.strokeStyle = C.gold; ctx.lineWidth = 2; ctx.stroke(); }
+    round(x + 0.5, y + 0.5, tileW - 1, photoH + textH - 1, 10);
+    ctx.strokeStyle = lines.length ? C.gold : C.line; ctx.lineWidth = lines.length ? 1.5 : 1; ctx.stroke();
     // date
     ctx.font = `500 13px ${font}`;
-    const date = fmtDate(dateOf(day), L, true);
-    const dw = ctx.measureText(date).width + 12;
-    round(x + 6, y + 6, dw, 20, 6); ctx.fillStyle = "rgba(18, 24, 30, 0.85)"; ctx.fill();
-    ctx.fillStyle = C.ink; ctx.fillText(date, x + 12, y + 20);
-    // name and levels
-    ctx.fillStyle = lines.length ? C.ink : C.muted;
+    const date = fmtDate(dateOf(day), L);
+    const dw = ctx.measureText(date).width + 10;
+    round(x + 5, y + 5, dw, 20, 6); ctx.fillStyle = "rgba(18, 24, 30, 0.85)"; ctx.fill();
+    ctx.fillStyle = C.ink; ctx.fillText(date, x + 10, y + 19);
+    // name and levels, close under the photo
+    ctx.fillStyle = C.ink;
     ctx.font = `600 16px ${font}`;
-    ctx.fillText(fit(ctx, name, tileW - 20), x + 10, y + photoH + 24);
-    ctx.font = `600 14px ${font}`;
-    if (past) { ctx.fillStyle = C.muted; ctx.fillText(R.ended, x + 10, y + photoH + 48); }
-    else if (!lines.length) { ctx.fillStyle = C.muted; ctx.fillText(LEVELS[levelBefore(plan, "char", day, today)], x + 10, y + photoH + 48); }
+    ctx.fillText(fit(ctx, name, tileW - 16), x + 8, y + photoH + 21);
+    ctx.font = `600 17px ${font}`;
+    if (past) { ctx.fillStyle = C.muted; ctx.fillText(R.ended, x + 8, y + photoH + 43); }
+    else if (!lines.length) { ctx.fillStyle = C.muted; ctx.fillText(LEVELS[levelBefore(plan, "char", day, today)], x + 8, y + photoH + 43); }
     lines.forEach((k, i) => {
       const from = LEVELS[levelBefore(plan, k, day, today)], to = LEVELS[plan.goals[day][k]];
-      const label = k === "char" ? "" : `${R.kindsShort.wheel} `;
-      const yy = y + photoH + 48 + i * 22;
+      const wheel = k === "wheel";
+      ctx.font = `600 ${wheel ? 14 : 17}px ${font}`;
+      const yy = y + photoH + 43 + i * 21;
       ctx.fillStyle = C.muted;
-      const pre = `${label}${from} → `;
-      ctx.fillText(fit(ctx, pre, tileW - 60), x + 10, yy);
+      const pre = `${wheel ? `${R.kindsShort.wheel} ` : ""}${from} → `;
+      ctx.fillText(fit(ctx, pre, tileW - 60), x + 8, yy);
       ctx.fillStyle = C.gold;
-      ctx.fillText(to, x + 10 + ctx.measureText(pre).width, yy);
+      ctx.fillText(to, x + 8 + ctx.measureText(pre).width, yy);
     });
   });
   ctx.fillStyle = C.muted; ctx.font = `500 13px ${font}`;

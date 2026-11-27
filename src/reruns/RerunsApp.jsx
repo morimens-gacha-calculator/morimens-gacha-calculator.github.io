@@ -412,10 +412,10 @@ function CompactPlan({ plan, query, result, banks, today }) {
     if (blob) download(`${fileName(C.fileName)}.jpg`, blob);
   };
   return (
-    <section className="s-card rr-compact" aria-label={C.title}>
-      <div className="rr-cal-head">
-        <h2 className="s-lead">{C.title}</h2>
-        <span className="s-hint">{summary}</span>
+    <section className="rr-compact" aria-label={C.title}>
+      <div className="rr-compact-head">
+        <h2 className="rr-compact-title">{C.title}</h2>
+        <span className="rr-compact-sum">{summary}</span>
         <span className="rr-compact-actions">
           <button type="button" className="btn btn--sm" onClick={save}>{C.saveImage}</button>
           <button type="button" className="btn btn--sm" onClick={copy}>{C.copyText}</button>
@@ -441,7 +441,7 @@ function CompactPlan({ plan, query, result, banks, today }) {
               <span className="rr-mt-name">{name}</span>
               <span className="rr-mt-lv">
                 {past ? R.ended : planned.length ? planned.map((k) => (
-                  <span key={k} className="rr-mt-line">
+                  <span key={k} className={`rr-mt-line ${k === "wheel" ? "is-wheel" : ""}`}>
                     {k === "wheel" && `${R.kindsShort.wheel} `}{LEVELS[levelBefore(plan, k, day, today)]} → <b>{LEVELS[plan.goals[day][k]]}</b>
                   </span>
                 )) : LEVELS[levelBefore(plan, "char", day, today)]}
