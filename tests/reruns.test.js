@@ -179,3 +179,24 @@ test("short links: the server takes the codes this page makes", async () => {
   assert.equal(server.source, CODE_PATTERN.source);
   assert.ok(server.test(encodePlan(defaultPlan())));
 });
+
+test("short links: a reruns plan with new numbers gets a new link, the same numbers the same one", async () => {
+  const { onRequestPost } = await import("../functions/api/share.js");
+  const kv = new Map();
+  const env = { LINKS: { get: async (k, type) => (kv.has(k) ? (type === "json" ? JSON.parse(kv.get(k)) : kv.get(k)) : null), put: async (k, v) => kv.set(k, typeof v === "string" ? v : v) } };
+  const post = async (body) => {
+    const request = new Request("https://example.org/api/share", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    return (await onRequestPost({ request, env })).json();
+  };
+  const code = encodePlan(defaultPlan());
+  const a = await post({ calc: "reruns", code, title: "50% chance", detail: "a" });
+  const again = await post({ calc: "reruns", code, title: "50% chance", detail: "a" });
+  const newer = await post({ calc: "reruns", code, title: "61% chance", detail: "b" });
+  assert.equal(a.id, again.id);
+  assert.notEqual(a.id, newer.id);
+  assert.equal(JSON.parse(kv.get(`s:${newer.id}`)).title, "61% chance");
+  // other calculators keep one link per setup
+  const c1 = await post({ calc: "covenant", code: "10856050615", title: "x", detail: "" });
+  const c2 = await post({ calc: "covenant", code: "10856050615", title: "y", detail: "" });
+  assert.equal(c1.id, c2.id);
+});

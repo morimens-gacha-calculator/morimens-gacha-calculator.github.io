@@ -123,6 +123,7 @@ export default {
     viewFull: "Полный",
     viewCompact: "Компактный",
     compact: {
+      more: (n) => `ещё ${n}`,
       title: "Мой план круток",
       textTitle: "Мой план на повторы годовщины",
       nothing: "Пока ничего не запланировано",

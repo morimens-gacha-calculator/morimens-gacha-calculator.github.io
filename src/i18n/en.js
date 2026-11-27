@@ -126,6 +126,7 @@ export default {
     viewFull: "Full",
     viewCompact: "Compact",
     compact: {
+      more: (n) => `+${n} more`,
       title: "My pull plan",
       textTitle: "My anniversary rerun plan",
       nothing: "Nothing planned yet",
