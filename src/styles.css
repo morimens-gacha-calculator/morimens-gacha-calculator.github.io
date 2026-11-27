@@ -154,6 +154,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
   position: absolute; top: 28px; left: 0; z-index: 40; width: min(320px, calc(100vw - 20px)); background: var(--pop-bg); color: #f1efff; border: 1px solid var(--line);
   transform: translateX(var(--shift, 0px));
   padding: 10px 30px 10px 12px; border-radius: 10px; font-size: 13px; line-height: 1.45;
+  font-weight: 400; /* not bold when the "?" sits in a heading */
 }
 .help-close { position: absolute; top: 4px; right: 6px; border: none; background: none; color: #c9c4ee; font-size: 16px; cursor: pointer; }
 

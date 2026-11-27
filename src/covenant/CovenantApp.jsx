@@ -286,7 +286,7 @@ function PlanSection({ result, state, ways }) {
   const lineText = (m) => {
     const gs = state.goals.filter((_, i) => (m >> i) & 1);
     const g = gs.reduce((a, x) => (x.level > a.level ? x : a), gs[0]);
-    return C.shareGoal(C.stats[g.stat], g.level);
+    return C.share.goal(C.stats[g.stat].replace(/\s*Lv\.$/, ""), g.level);
   };
   // a situation by the goals its lines meet together (each line one goal): extra lines that only
   // repeat a goal change nothing, so such situations are one row
