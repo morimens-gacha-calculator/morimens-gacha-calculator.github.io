@@ -4,8 +4,9 @@ import { useEngine } from "./useEngine.js";
 import { decodeSetup, linkCode, makeShareLink, makeShortLink, shareParts, shareSummary } from "./share.js";
 import { shareCard } from "./export.js";
 import { useCompare } from "./useCompare.js";
-import { I18nContext, LOCALES, browserLocale, setLocale, withWording } from "./i18n/index.js";
-import { BACKGROUNDS, DEFAULT_PRESET, SITE_NAME, BANNERS_PATCH, SOURCE_URL } from "./site.config.js";
+import { I18nContext, withWording } from "./i18n/index.js";
+import { DEFAULT_PRESET } from "./site.config.js";
+import { Background, CalcNav, LanguagePicker, SiteFooter, loadLang, saveLang } from "./components/SiteParts.jsx";
 import { Notices, useShare } from "./components/Share.jsx";
 import NamesDialog from "./components/NamesDialog.jsx";
 import Dialog from "./components/Dialog.jsx";
@@ -24,29 +25,6 @@ const load = (key, check) => {
 const store = (key, v) => { try { localStorage.setItem(key, typeof v === "string" ? v : JSON.stringify(v)); } catch { /* ignore */ } };
 const read = (key) => { try { return localStorage.getItem(key); } catch { return null; } };
 
-// The language is applied before rendering, so charts and model text are right on the first draw
-function loadLang() {
-  const saved = read("banner-calc-lang");
-  const code = LOCALES[saved] ? saved : browserLocale();
-  setLocale(code);
-  document.documentElement.lang = code;
-  return code;
-}
-
-// The background of a view ("simple" or "full"), from src/site.config.js
-const backgroundStyle = (view) => {
-  const B = BACKGROUNDS[view] ?? BACKGROUNDS.simple;
-  if (!B?.desktop) return null;
-  return {
-    "--bg-desktop": `url("${B.desktop}")`,
-    "--bg-mobile": `url("${B.mobile ?? B.desktop}")`,
-    "--bg-position": B.position ?? "center top",
-    "--bg-size": B.size ?? "cover",
-    ...(B.fade ? { "--bg-fade": B.fade } : {}),
-    position: B.fixed ? "fixed" : "absolute",
-  };
-};
-
 // The parts of the state that define a setup worth comparing
 // (with several banners: all of them, and how the pulls are spent)
 // (and banner plan 1's own names: Edit names)
@@ -54,7 +32,8 @@ const snapshotOf = (s) => ({ preset: s.preset, banner: s.banner, goal: s.goal, g
   ...(String(s.title ?? "").trim() ? { title: s.title } : {}), ...(s.names ? { names: s.names } : {}),
   ...(stagesOf(s).length ? { stages: s.stages, spend: s.spend } : {}) });
 
-export default function App() {
+// onGo: open another calculator (the switch under the title)
+export default function App({ onGo }) {
   const [lang, setLang] = useState(loadLang);
   // nothing saved yet and no shared link: show the example questions
   const [firstVisit, setFirstVisit] = useState(() => !read(STORE_KEY) && !linkCode(window.location.hash));
@@ -117,10 +96,8 @@ export default function App() {
   useEffect(() => store(SETTINGS_KEY, settings), [settings]);
   useEffect(() => { if (state.preset === "custom") store(CUSTOM_KEY, snapshotOf(state)); }, [state]);
   useEffect(() => store(COMPARE_KEY, compare), [compare]);
-  useEffect(() => store("banner-calc-lang", lang), [lang]);
   const changeLang = (code) => {
-    setLocale(code);
-    document.documentElement.lang = code;
+    saveLang(code);
     setLang(code);
     setState((s) => withPresetNames(s));
   };
@@ -257,22 +234,13 @@ export default function App() {
 
   return (
     <I18nContext.Provider value={T}>
-        {backgroundStyle(simpleView ? "simple" : "full") && (
-          <div key={simpleView ? "simple" : "full"} className="background-container" style={backgroundStyle(simpleView ? "simple" : "full")} aria-hidden="true" />
-        )}
+        <Background view={simpleView ? "simple" : "full"} />
         <main className="main">
           <section className={`content-box ${simpleView ? "is-simple" : "is-full"}`} aria-label={T.app.title}>
             <div className="header-row">
               <h1 className="main-title">{T.app.title}</h1>
               <div className="row header-buttons">
-                {Object.keys(LOCALES).length > 1 && (
-                  <label className="inline-field">
-                    <span className="sr-only">{T.app.language}</span>
-                    <select className="select" value={lang} onChange={(e) => changeLang(e.target.value)} aria-label={T.app.language}>
-                      {Object.entries(LOCALES).map(([code, L]) => <option key={code} value={code}>{L.langName}</option>)}
-                    </select>
-                  </label>
-                )}
+                <LanguagePicker lang={lang} onChange={changeLang} />
                 <div className="view-switch" role="group" aria-label={T.app.viewLabel}>
                   <button type="button" aria-pressed={simpleView} className={simpleView ? "is-on" : ""} onClick={() => setViewMode("simple")}>{T.app.viewSimple}</button>
                   <button type="button" aria-pressed={!simpleView} className={!simpleView ? "is-on" : ""} onClick={() => setViewMode("full")}>{T.app.viewFull}</button>
@@ -283,6 +251,7 @@ export default function App() {
                 <button type="button" className="btn btn--primary header-share" onClick={share} title={T.app.shareTitle}>{T.app.share}</button>
               </div>
             </div>
+            <CalcNav calc="pulls" onGo={onGo} />
 
             <Notices shareMsg={shareMsg} clearShare={clearShare}
               canUndo={!!undoState} undoText={undoKind === "shared" ? T.app.sharedLoaded : views.length > 1 ? T.stages.resetDone(undoPlan) : T.app.resetDone}
@@ -319,17 +288,7 @@ export default function App() {
           <NamesDialog key={namesFor} view={views[namesFor]} index={namesFor} onClose={() => setNamesFor(null)}
             onSave={(v) => { const i = namesFor; update((s) => writeStage(s, i, { ...stageView(s, i), title: v.title, names: v.names ?? null, banner: v.banner })); setNamesFor(null); }} />
         )}
-        <footer className="footer">
-          <p className="footer-patch">{T.footer.patch(BANNERS_PATCH)}</p>
-          <small>
-            {T.footer.unofficial(SITE_NAME)}<br />
-            {T.footer.assets}<br />
-            {T.footer.affiliation}
-          </small>
-          {SOURCE_URL && (
-            <a className="footer-link" href={SOURCE_URL} target="_blank" rel="noopener noreferrer">{T.footer.source}</a>
-          )}
-        </footer>
+        <SiteFooter />
     </I18nContext.Provider>
   );
 }

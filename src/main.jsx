@@ -1,6 +1,6 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import App from "./App.jsx";
+import Site from "./Site.jsx";
 // fonts, served by the site itself: Inter for everything, JetBrains Mono for the banner data editor
 import "@fontsource-variable/inter";
 import "@fontsource/jetbrains-mono/400.css";
@@ -15,6 +15,6 @@ document.addEventListener("keydown", (e) => { if (["Tab", "ArrowUp", "ArrowDown"
 
 createRoot(document.getElementById("root")).render(
   <StrictMode>
-    <App />
+    <Site />
   </StrictMode>
 );
