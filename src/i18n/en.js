@@ -69,7 +69,11 @@ export default {
 
   site: {
     navLabel: "Calculators",
-    calcs: { pulls: "Pulls", covenant: "Covenant substats" },
+    menuTitle: "Calculators",
+    openMenu: "Menu: calculators and language",
+    closeMenu: "Close the menu",
+    calcs: { banners: "Banner pulls", covenant: "Covenant substats" },
+    descs: { banners: "Your chance with your pulls, and the pulls a goal takes", covenant: "Rerolls and materials to get the substats you want" },
   },
   covenant: {
     pageTitle: "Covenant substat calculator · Morimens",

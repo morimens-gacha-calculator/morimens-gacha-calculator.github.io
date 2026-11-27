@@ -18,11 +18,12 @@
     <meta property="og:image:alt" content="Morimens Gacha Calculator: a chance-by-pull curve" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="theme-color" content="#15172a" />
-    <!-- lets big calculations use several CPU cores (see the file for details) -->
-    <script src="./coi-serviceworker.js"></script>
+    <!-- the site's start page: the banner calculator lives at banners/; old links (#s=… shared
+         setups too) are sent on there with their query and hash -->
+    <script>location.replace("banners/" + location.search + location.hash);</script>
+    <noscript><meta http-equiv="refresh" content="0; url=banners/" /></noscript>
   </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.jsx"></script>
+  <body style="background: #0f1418; color: #e8ebe7; font-family: system-ui, sans-serif; padding: 24px">
+    <p><a style="color: #8cc8e8" href="banners/">Morimens Gacha Calculator</a></p>
   </body>
 </html>
