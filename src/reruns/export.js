@@ -41,7 +41,14 @@ export async function planImage({ plan, today, T, summary, portrait }) {
   const font = v("--font", "system-ui, sans-serif");
   const C = { bg: v("--bg", "#12181e"), tile: v("--surface-2", "#1c242d"), line: v("--line", "#2c3843"), ink: v("--ink", "#e8ebe7"), ink2: v("--ink-2", "#c3cac8"), muted: v("--muted", "#8d9a9c"), gold: v("--gold", "#e8b04f"), inset: v("--inset", "#121920") };
   const cols = 7, rows = Math.ceil(DAYS / cols);
-  const pad = 40, gap = 10, tileW = 180, photoH = 180, textH = 70;
+  const pad = 40, gap = 10, tileW = 180, photoH = 180;
+  // a level too long for its column goes on two lines; then every tile gets the room for it
+  const colText = (colW) => colW / 2 - 14;
+  const probe = document.createElement("canvas").getContext("2d");
+  probe.font = `600 15px ${getComputedStyle(document.documentElement).getPropertyValue("--font").trim() || "system-ui, sans-serif"}`;
+  const tooLong = CHARACTERS.some((_, day) => KINDS.some((k) => copiesOn(plan, k, day, today) > 0
+    && probe.measureText(`${LEVELS[levelBefore(plan, k, day, today)]} → ${LEVELS[plan.goals[day][k]]}`).width > colText(tileW)));
+  const textH = tooLong ? 94 : 76;
   const W = pad * 2 + cols * tileW + (cols - 1) * gap;
   const head = 120;
   const H = head + rows * (photoH + textH) + (rows - 1) * gap + pad + 26;
@@ -91,20 +98,32 @@ export async function planImage({ plan, today, T, summary, portrait }) {
     ctx.fillStyle = C.ink;
     ctx.font = `600 16px ${font}`;
     ctx.fillText(fit(ctx, name, tileW - 16), x + 8, y + photoH + 21);
-    ctx.font = `600 17px ${font}`;
-    if (past) { ctx.fillStyle = C.muted; ctx.fillText(R.ended, x + 8, y + photoH + 43); }
-    else if (!lines.length) { ctx.fillStyle = C.muted; ctx.fillText(LEVELS[levelBefore(plan, "char", day, today)], x + 8, y + photoH + 43); }
-    lines.forEach((k, i) => {
-      const from = LEVELS[levelBefore(plan, k, day, today)], to = LEVELS[plan.goals[day][k]];
-      const wheel = k === "wheel";
-      ctx.font = `600 ${wheel ? 14 : 17}px ${font}`;
-      const yy = y + photoH + 43 + i * 21;
-      ctx.fillStyle = C.muted;
-      const pre = `${wheel ? `${R.kindsShort.wheel} ` : ""}${from} → `;
-      ctx.fillText(fit(ctx, pre, tileW - 60), x + 8, yy);
-      ctx.fillStyle = C.gold;
-      ctx.fillText(to, x + 8 + ctx.measureText(pre).width, yy);
-    });
+    if (past) { ctx.font = `600 15px ${font}`; ctx.fillStyle = C.muted; ctx.fillText(R.ended, x + 8, y + photoH + 45); }
+    else {
+      // character | wheel, side by side, split by a thin line; the side with no plan dim
+      const colW = tileW / 2;
+      ctx.strokeStyle = C.line; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(x + colW + 0.5, y + photoH + 31); ctx.lineTo(x + colW + 0.5, y + photoH + textH - 9); ctx.stroke();
+      KINDS.forEach((k, i) => {
+        const cx = x + i * colW + 8, w = colW - 14;
+        const from = LEVELS[levelBefore(plan, k, day, today)], to = LEVELS[plan.goals[day][k]];
+        const on = lines.includes(k);
+        ctx.font = `500 12.5px ${font}`; ctx.fillStyle = C.muted;
+        ctx.fillText(fit(ctx, R.kindsShort[k], w), cx, y + photoH + 44);
+        ctx.font = `600 15px ${font}`;
+        ctx.globalAlpha = on ? 1 : 0.6;
+        if (!on) { ctx.fillStyle = C.muted; ctx.fillText(fit(ctx, from, w), cx, y + photoH + 64); }
+        else {
+          const pre = `${from} → `;
+          const pw = ctx.measureText(pre).width;
+          ctx.fillStyle = C.muted; ctx.fillText(pre, cx, y + photoH + 64);
+          ctx.fillStyle = C.gold;
+          if (pw + ctx.measureText(to).width <= w) ctx.fillText(to, cx + pw, y + photoH + 64);
+          else ctx.fillText(fit(ctx, to, w), cx, y + photoH + 82);
+        }
+        ctx.globalAlpha = 1;
+      });
+    }
   });
   ctx.fillStyle = C.muted; ctx.font = `500 13px ${font}`;
   ctx.fillText(SITE_NAME, pad, H - pad + 14);
