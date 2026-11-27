@@ -32,12 +32,13 @@ export function covenantLink(state) {
 }
 
 // What a shared link says:
-//   16 rerolls on average, the cheapest way
+//   16 rerolls on average, locking each line the moment it meets a goal
 //   Now: Crit. Rate Lv 8 · Keyflare Regen Lv. Lv 6 · Crit. Rate Lv 5
 //   Want: Crit. Rate Lv 6+ · Crit. DMG Lv 5+
 //   On average: 117,291 Rose script, 47 seals, 15.6 quills
 // title / detail: the preview card's (the answer; what's wanted)
-export function covenantShare(state, result, T) {
+// way: whose numbers to give ("asTheyCome", the simple view's rule, or "cheapest")
+export function covenantShare(state, result, T, way = "asTheyCome") {
   const C = T.covenant;
   const L = T.numberLocale;
   const name = (x) => C.shareStat(C.stats[x.stat], x.level);
@@ -46,8 +47,8 @@ export function covenantShare(state, result, T) {
   let headline = "", extra = "";
   if (result?.done) headline = C.done;
   else if (result) {
-    const best = result.ways.find((w) => w.key === "cheapest");
-    headline = C.shareHeadline(fmtInt(best.rerolls));
+    const best = result.ways.find((w) => w.key === way);
+    headline = (way === "cheapest" ? C.shareHeadline : C.shareHeadlineRule)(fmtInt(best.rerolls));
     const q = best.materials.quills.toLocaleString(L, { maximumFractionDigits: 1 });
     extra = C.shareMaterials(fmtInt(best.materials.roseScript), fmtInt(best.materials.seals), q);
   }

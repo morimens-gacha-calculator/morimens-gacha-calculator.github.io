@@ -163,10 +163,16 @@ A reroll costs 7,500 Rose script and 3 seals, plus 1 quill with one locked line 
 with two (at most two). The calculator counts in quills, since a quill can be made into 20 seals
 but not the other way round: a reroll costs 0.15, 1.15 or 10.15 quills.
 
+The simple view gives the simple rule: lock a line
+the moment it meets a goal and keep it locked (up to 2 lines), which is the best or close to it
+for almost every goal. The full view adds every way of locking side by side (the cheapest one's
+numbers on top) and the whole plan: what to lock in every situation a way can lead to, and the
+rerolls left from there. The "?" by "Current substats" gives the odds, from `rates.js`.
+
 `src/covenant/engine.js` works it out exactly. A line matters only through which goals it can
 meet, so the state before a reroll is the 3 lines' goal masks (at most 120 states). Policy
 iteration finds the locking choices with the fewest quills on average ("Cheapest") and the
-fewest rerolls with up to 2, 1 or no locks; linear equations give the averages, and powers of
+fewest rerolls with up to 2, 1 or no locks ("lock as they come" is a fixed rule on the same chain); linear equations give the averages, and powers of
 the transition matrix give the chance by reroll, so even goals that take millions of rerolls
 are answered in milliseconds. Share links keep a covenant in `#c=…` (`src/covenant/share.js`:
 "1", then 2 digits per line and goal, substat and level); short links (`/s/…`) work for every

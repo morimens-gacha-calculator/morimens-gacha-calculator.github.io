@@ -9,6 +9,8 @@
 // piece is done when the goals can be matched to 3 different lines.
 //
 // Ways of locking:
+//   asTheyCome: lock each line the moment it meets a goal and keep it locked (up to 2): the
+//     simple rule, best or close to it for most goals
 //   cheapest: the choices that cost the fewest quills on average (a reroll costs 3 seals = 0.15
 //     quills, +1 quill with one lock, +10 with two), found exactly by policy iteration
 //   fewest:   the fewest rerolls on average with up to 2, up to 1 or no locked lines
@@ -18,6 +20,7 @@
 import { COSTS, LEVELS, LINES, PIECES, SEALS_PER_QUILL } from "./rates.js";
 
 const TIE = 1e-12; // relative: a choice must be better by more than this to replace another
+const popcount = (m) => { let n = 0; for (; m; m >>= 1) n += m & 1; return n; };
 
 // lines: [{ stat, level }] (LINES of them; stat null = empty); goals: [{ stat, level }] (≤ 3)
 export function solveCovenant({ lines, goals, piece = 1, levels = LEVELS, pieces = PIECES, costs = COSTS }) {
@@ -90,25 +93,52 @@ export function solveCovenant({ lines, goals, piece = 1, levels = LEVELS, pieces
     s.choices.sort((a, b) => a.locks - b.locks); // fewer locks first: kept on ties
   }
 
+  // how many goals some of these lines can meet together (each line one goal)
+  const matched = (ms) => {
+    let best = 0;
+    const rec = (g, used, n) => {
+      if (g === G) { best = Math.max(best, n); return; }
+      rec(g + 1, used, n);
+      ms.forEach((m, i) => { if (!((used >> i) & 1) && ((m >> g) & 1)) rec(g + 1, used | (1 << i), n + 1); });
+    };
+    rec(0, 0, 0);
+    return best;
+  };
+  const bits = (ms) => ms.reduce((n, m) => n + popcount(m), 0);
+  // lock as they come: keep the lines that meet the most goals together; of those, the fewest
+  // lines, then the lines that could meet more goals
+  const asTheyCome = (choices) => {
+    let best = 0;
+    choices.forEach((c, j) => {
+      const b = choices[best];
+      const [mc, mb] = [matched(c.kept), matched(b.kept)];
+      if (mc > mb || (mc === mb && (c.locks < b.locks || (c.locks === b.locks && bits(c.kept) > bits(b.kept))))) best = j;
+    });
+    return best;
+  };
+
   const start = index.get(keyOf(startMasks));
   const quillsPer = (locks) => costs.seals / SEALS_PER_QUILL + costs.lockQuills[locks];
   const ways = [
+    { key: "asTheyCome", maxLocks: costs.maxLocks, cost: quillsPer, fixed: asTheyCome },
     { key: "cheapest", maxLocks: costs.maxLocks, cost: quillsPer },
     { key: "fewest2", maxLocks: 2, cost: () => 1 },
     { key: "fewest1", maxLocks: 1, cost: () => 1 },
     { key: "none", maxLocks: 0, cost: () => 1 },
   ].map((w) => wayOf(w, states, start, costs));
-  return { done: states[start].done, ways, startMasks, goals: G };
+  return { done: states[start].done, ways, startMasks, goals: G, matched };
 }
 
 // One way of locking: its choices (policy iteration), averages and the chance by reroll
-function wayOf({ key, maxLocks, cost }, states, start, costs) {
+function wayOf({ key, maxLocks, cost, fixed }, states, start, costs) {
   const T = []; // the states not done yet
   const at = new Map();
   states.forEach((s, i) => { if (!s.done) { at.set(i, T.length); T.push(i); } });
   const n = T.length;
   const allowed = T.map((i) => states[i].choices.filter((c) => c.locks <= maxLocks));
-  let policy = allowed.map(() => 0); // start with no locks: every line drawn again, so done is always possible
+  // a fixed rule, or (policy iteration) start with no locks: every line drawn again, so done is
+  // always possible
+  let policy = allowed.map((choices) => (fixed ? fixed(choices) : 0));
   let lu, V;
   for (let round = 0; round < 1000; round++) {
     // (I − Q): the diagonal as the chance of leaving the state, not 1 − the chance of staying,
@@ -121,6 +151,7 @@ function wayOf({ key, maxLocks, cost }, states, start, costs) {
       }
     });
     V = lu.solve(T.map((_, r) => cost(allowed[r][policy[r]].locks)));
+    if (fixed) break;
     let changed = false;
     policy = policy.map((cur, r) => {
       const value = (c) => cost(c.locks) + c.next.reduce((s, [t, p]) => s + (at.has(t) ? p * V[at.get(t)] : 0), 0);
@@ -144,7 +175,21 @@ function wayOf({ key, maxLocks, cost }, states, start, costs) {
   materials.inQuills = materials.quills + materials.seals / SEALS_PER_QUILL;
   const first = done ? null : allowed[s0][policy[s0]].kept;
   const chain = done ? null : chanceChain(T, at, allowed, policy, s0);
-  return { key, maxLocks, rerolls, byLocks, materials, first, policy, done, ...(chain ?? {}) };
+  // the whole plan: every situation this way can reach from the start, what it locks there and
+  // how many rerolls are left on average from there
+  let plan = [];
+  if (!done) {
+    const left = lu.solve(T.map(() => 1));
+    const seen = new Set([s0]), order = [s0];
+    for (let i = 0; i < order.length; i++) {
+      for (const [t] of allowed[order[i]][policy[order[i]]].next) if (at.has(t) && !seen.has(at.get(t))) { seen.add(at.get(t)); order.push(at.get(t)); }
+    }
+    plan = order.map((r) => {
+      const c = allowed[r][policy[r]];
+      return { masks: states[T[r]].ms, kept: c.kept, locks: c.locks, rerollsLeft: Math.max(0, left[r]), start: r === s0 };
+    });
+  }
+  return { key, maxLocks, rerolls, byLocks, materials, first, policy, done, plan, ...(chain ?? {}) };
 }
 
 // The chance to be done by reroll n, from the transient part of the chain: P(not done after n) =

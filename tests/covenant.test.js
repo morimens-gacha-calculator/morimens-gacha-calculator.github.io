@@ -27,6 +27,7 @@ test("three Crit. Rate Lv 8 lines, locking up to 2: the Markov chain by hand", (
   const goals = [0, 1, 2].map(() => ({ stat: "critRate", level: 8 }));
   const r = solveCovenant({ lines: junk, goals });
   close(way(r, "fewest2").rerolls, e0, 1e-10);
+  close(way(r, "asTheyCome").rerolls, e0, 1e-10, "locking each match as it comes is the same chain");
   close(e0, 732.9162842439387, 1e-12, "the reference figure");
 });
 
@@ -100,4 +101,19 @@ test("a covenant goes through a link and back", () => {
   // the server checks codes the same way
   const server = readFileSync(new URL("../functions/api/share.js", import.meta.url), "utf8");
   assert.ok(server.includes(String(CODE_PATTERN)), "functions/api/share.js: the same pattern for covenant codes");
+});
+
+test("lock as they come: keeps what meets goals, never lets it go, and costs no less than the cheapest", () => {
+  const lines = [{ stat: "critRate", level: 8 }, { stat: "keyflareRegen", level: 6 }, { stat: "critRate", level: 5 }];
+  const goals = [{ stat: "critRate", level: 6 }, { stat: "critDmg", level: 6 }, { stat: "dmgAmp", level: 7 }];
+  const r = solveCovenant({ lines, goals });
+  const w = way(r, "asTheyCome");
+  assert.ok(way(r, "cheapest").materials.inQuills <= w.materials.inQuills + 1e-9);
+  assert.ok(w.plan.length > 1 && w.plan[0].start);
+  for (const step of w.plan) {
+    // it locks as many goals as the lines meet (at most 2)
+    assert.equal(r.matched(step.kept), Math.min(2, r.matched(step.masks)), JSON.stringify(step));
+    assert.ok(step.rerollsLeft > 0);
+  }
+  close(w.plan[0].rerollsLeft, w.rerolls, 1e-12);
 });

@@ -1118,3 +1118,15 @@ html[data-input="mouse"] .select:focus { border-color: var(--line-strong); outli
   .cov-mat dd { font-size: 17px; gap: 5px; flex-wrap: wrap; }
   .cov-mat dd img { width: 22px; height: 22px; }
 }
+/* the whole plan (full view): what your lines meet · what to do · rerolls left */
+.st-table.cov-plan { grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr) auto; }
+.cov-plan-do { display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 1px; }
+.cov-plan-do small { font-size: 12px; color: var(--muted); }
+.cov-plan .st-name > span:last-child { white-space: normal; overflow: visible; }
+.cov-ways > .seg { justify-self: start; }
+@media (max-width: 640px) {
+  .st-table.cov-plan { grid-template-columns: minmax(0, 1fr); }
+  .cov-plan-do { flex-basis: 100%; flex-direction: row; flex-wrap: wrap; align-items: baseline; justify-content: flex-start; gap: 0 6px; }
+  .cov-mat dd { flex-wrap: nowrap; font-size: 16px; }
+  .cov-mat dd img { width: 20px; height: 20px; }
+}
