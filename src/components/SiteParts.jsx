@@ -12,6 +12,7 @@ import { BACKGROUNDS, BANNERS_PATCH, SITE_NAME, SOURCE_URL } from "../site.confi
 export const CALCULATORS = [
   { key: "banners", path: "banners/" },
   { key: "covenant", path: "covenant/" },
+  { key: "income", path: "income/" },
 ];
 // the open calculator and the site's root, from the address
 export function whereAmI(pathname = location.pathname) {
@@ -100,6 +101,8 @@ const MENU_ICONS = {
   banners: <svg width="22" height="22" viewBox="0 0 24 24" focusable="false"><path d="M3 20h18M4 19c3-1 4-12 8-13s5 6 8 6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>,
   // substat lines, one locked
   covenant: <svg width="22" height="22" viewBox="0 0 24 24" focusable="false"><path d="M3 6h10M3 12h8M3 18h10" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /><rect x="15" y="12" width="6.5" height="6" rx="1.2" fill="none" stroke="currentColor" strokeWidth="1.6" /><path d="M16.5 12v-1.6a1.75 1.75 0 0 1 3.5 0V12" fill="none" stroke="currentColor" strokeWidth="1.6" /></svg>,
+  // a stack of coins
+  income: <svg width="22" height="22" viewBox="0 0 24 24" focusable="false"><ellipse cx="12" cy="6" rx="7" ry="2.6" fill="none" stroke="currentColor" strokeWidth="1.7" /><path d="M5 6v4.5c0 1.4 3.1 2.6 7 2.6s7-1.2 7-2.6V6M5 10.5V15c0 1.4 3.1 2.6 7 2.6s7-1.2 7-2.6v-4.5M5 15v3.4C5 19.8 8.1 21 12 21s7-1.2 7-2.6V15" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" /></svg>,
 };
 
 // The language, read before the first render so charts and texts are right from the start

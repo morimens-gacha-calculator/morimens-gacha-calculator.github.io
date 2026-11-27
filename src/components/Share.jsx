@@ -15,8 +15,10 @@ export function useShare(onShare) {
     const { url, summary } = await onShare();
     const text = `${summary}\n${url}`;
     const phone = typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches;
+    // the link inside the text, on its own line: given separately, some apps put it on the
+    // summary's last line
     if (phone && navigator.share) {
-      try { await navigator.share({ text: summary, url }); return; }
+      try { await navigator.share({ text }); return; }
       catch (e) { if (e?.name === "AbortError") return; } // closed by the user
     }
     try {
