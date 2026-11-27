@@ -21,9 +21,9 @@ export const LEVELS = ["None", "E0", "E1", "E2", "E3", "E3+1", "E3+2", "E3+3", "
 export const MAX_LEVEL = LEVELS.length - 1;
 export const KINDS = ["char", "wheel"]; // pulled in this order each day
 
-// One-off rewards for the event, on its first day; paid ones start left out
+// One-off rewards for the event, on its first day; only Sleepless Oath is counted at first
 export const ONE_OFFS = [
-  { key: "oath", day: 0, pulls: 300, silver: 0 },
+  { key: "oath", day: 0, pulls: 300, silver: 0, on: true },
   { key: "archives", day: 0, pulls: 300, silver: 15000, paid: true },
   { key: "pilgrimage", day: 0, pulls: 105, silver: 2260 },
 ];
@@ -38,7 +38,7 @@ export const defaultPlan = () => ({
   pulls: 0,
   silver: 0,
   pity: { char: { k: 0, l: 0 }, wheel: { k: 0, l: 0 } },
-  oneOffs: Object.fromEntries(ONE_OFFS.map((o) => [o.key, !o.paid])),
+  oneOffs: Object.fromEntries(ONE_OFFS.map((o) => [o.key, !!o.on])),
   now: { char: Object.fromEntries(NAMES.map((n) => [n, 0])), wheel: Object.fromEntries(NAMES.map((n) => [n, 0])) },
   goals: CHARACTERS.map(() => ({ char: 0, wheel: 0 })),
 });

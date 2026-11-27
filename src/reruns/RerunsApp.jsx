@@ -439,13 +439,20 @@ function CompactPlan({ plan, query, result, banks, today }) {
                 <span className="rr-date">{fmtDate(dateOf(day), L)}</span>
               </div>
               <span className="rr-mt-name">{name}</span>
-              <span className="rr-mt-lv">
-                {past ? R.ended : planned.length ? planned.map((k) => (
-                  <span key={k} className={`rr-mt-line ${k === "wheel" ? "is-wheel" : ""}`}>
-                    {k === "wheel" && `${R.kindsShort.wheel} `}{LEVELS[levelBefore(plan, k, day, today)]} → <b>{LEVELS[plan.goals[day][k]]}</b>
-                  </span>
-                )) : LEVELS[levelBefore(plan, "char", day, today)]}
-              </span>
+              {past ? <span className="rr-mt-lv">{R.ended}</span> : (
+                <span className="rr-mt-cols">
+                  {KINDS.map((k) => {
+                    const from = LEVELS[levelBefore(plan, k, day, today)];
+                    const on = planned.includes(k);
+                    return (
+                      <span key={k} className={`rr-mt-col ${on ? "" : "is-off"}`}>
+                        <span className="rr-mt-k">{R.kindsShort[k]}</span>
+                        <span className="rr-mt-v">{on ? <>{from}{"\u2009→\u2009"}<b>{LEVELS[plan.goals[day][k]]}</b></> : from}</span>
+                      </span>
+                    );
+                  })}
+                </span>
+              )}
             </div>
           );
         })}

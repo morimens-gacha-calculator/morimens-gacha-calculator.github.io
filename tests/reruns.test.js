@@ -127,9 +127,13 @@ test("what you hold: income after today, on its days, and the event's gifts", ()
   const banks = bankByDay(plan, defaultIncome(), -3); // typed in on 27 Nov
   // 28–30 Nov: dailies 3 × 100 silver; on the 30th weekly 500 silver, the 28-day sources
   // (32 limited + 1,880 silver, and 1,000 silver from the modes), D-Tide 2,400 silver,
-  // Sleepless Oath 300 and Echoed Pilgrimage 105 + 2,260 silver
-  assertClose(banks[0], 105 + 1.5 + 2.5 + 46.4 + 12 + 300 + 116.3, 1e-9, "30 Nov");
-  assertClose(banks[34], 105 + 18.5 + 12.5 + 92.8 + 36 + 416.3, 1e-9, "3 Jan");
+  // and Sleepless Oath's 300 (the only reward counted at first)
+  assertClose(banks[0], 105 + 1.5 + 2.5 + 46.4 + 12 + 300, 1e-9, "30 Nov");
+  assertClose(banks[34], 105 + 18.5 + 12.5 + 92.8 + 36 + 300, 1e-9, "3 Jan");
+  // with Echoed Pilgrimage too: 105 pulls + 2,260 silver more
+  const both = bankByDay({ ...plan, oneOffs: { ...plan.oneOffs, pilgrimage: true } }, defaultIncome(), -3);
+  assertClose(both[0] - banks[0], 116.3, 1e-9, "Echoed Pilgrimage");
+  assert.deepEqual(defaultPlan().oneOffs, { oath: true, archives: false, pilgrimage: false });
   // typed in on 5 Dec: the days before have ended, that day holds what you typed
   const later = bankByDay(plan, defaultIncome(), 5);
   assert.equal(later[4], null);
