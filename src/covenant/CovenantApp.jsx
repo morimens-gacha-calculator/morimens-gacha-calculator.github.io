@@ -2,25 +2,32 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Line } from "react-chartjs-2";
 import { I18nContext, useT as useContextT, withWording } from "../i18n/index.js";
 import { fmtInt, newId } from "../model.js";
-import { Background, CalcNav, LanguagePicker, SiteFooter, loadLang, saveLang } from "../components/SiteParts.jsx";
+import { Background, SiteFooter, SiteHeader, loadLang, saveLang } from "../components/SiteParts.jsx";
 import { HelpButton } from "../components/Help.jsx";
 import { TrashIcon } from "../components/Icon.jsx";
 import { downloadWithLabels, phoneLayout, themeColors, usePhone, usePopup, yAxis } from "../components/ResultChart.jsx";
-import { downloadCsv } from "../export.js";
+import { downloadCsv, shareCard } from "../export.js";
+import { Notices, useShare } from "../components/Share.jsx";
+import { covenantCode, covenantLink, covenantShare, covenantShortLink, decodeCovenant } from "./share.js";
 import { linesToLock, solveCovenant } from "./engine.js";
-import { LEVELS, LINES, MAX_GOALS, SUBSTATS } from "./rates.js";
+import { COSTS, LEVELS, LINES, MAX_GOALS, PIECES, SUBSTATS } from "./rates.js";
+
+const NEW_GOAL_LEVEL = 6; // a new goal starts here (and the odds hint shows Lv 6+)
 
 // The covenant substat calculator: a piece's 3 substat lines now, the lines you want, and how
-// many rerolls and materials that takes for each way of locking (engine.js). The same two
-// cards as the pull calculator: your covenant on the left, the answer on the right.
+// many rerolls and materials that takes (engine.js). The same two cards as the banner
+// calculator: your covenant on the left, the answer on the right. Simple view: the simple rule
+// (lock each line the moment it meets a goal, and keep it). Full view: every way of locking side
+// by side, the cheapest one's numbers, and the whole plan of the way you pick.
 
 const ICONS = import.meta.glob("../assets/covenant/*.{png,webp}", { eager: true, import: "default" });
 const icon = (name) => Object.entries(ICONS).find(([p]) => p.includes(`/${name}.`))?.[1];
 
 const STORE_KEY = "covenant-calc-v1";
+const VIEW_KEY = "covenant-calc-view";
 const fresh = () => ({
   lines: [{ stat: "critRate", level: 8 }, { stat: "keyflareRegen", level: 6 }, { stat: "critRate", level: 5 }],
-  goals: [{ id: newId(), stat: "critRate", level: 6 }, { id: newId(), stat: "critDmg", level: 5 }],
+  goals: [{ id: newId(), stat: "critRate", level: 6 }, { id: newId(), stat: "critDmg", level: 6 }],
 });
 const okLine = (l) => l && SUBSTATS.some((s) => s.key === l.stat) && Number.isInteger(l.level) && l.level >= 1 && l.level <= LEVELS.length;
 function loadState() {
@@ -44,6 +51,8 @@ export function valueText(stat, level, locale) {
 const fmtBig = (x, locale) => (x == null ? "-" : x >= 1e7 ? new Intl.NumberFormat(locale, { notation: "compact", maximumFractionDigits: 1 }).format(x) : fmtInt(x));
 const fmtQuills = (x, locale) => (x >= 1e5 ? fmtBig(x, locale) : x.toLocaleString(locale, { minimumFractionDigits: 1, maximumFractionDigits: 1 }));
 
+const readView = () => { try { return localStorage.getItem(VIEW_KEY) === "full" ? "full" : "simple"; } catch { return "simple"; } };
+
 const MARK = "\u0001";
 function highlight(template, value) {
   const [before, after = ""] = template(MARK).split(MARK);
@@ -55,7 +64,10 @@ export default function CovenantApp({ onGo }) {
   const T = useMemo(() => withWording(lang, false), [lang]);
   const C = T.covenant;
   const [state, setState] = useState(loadState);
+  const [view, setView] = useState(readView);
+  const full = view === "full";
   useEffect(() => { try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch { /* no storage */ } }, [state]);
+  useEffect(() => { try { localStorage.setItem(VIEW_KEY, view); } catch { /* no storage */ } }, [view]);
   useEffect(() => {
     const before = document.title;
     document.title = C.pageTitle;
@@ -64,22 +76,57 @@ export default function CovenantApp({ onGo }) {
 
   const result = useMemo(() => (state.goals.length ? solveCovenant({ lines: state.lines, goals: state.goals }) : null), [state]);
 
+  // a shared link (#c=…) opens its covenant; Undo brings yours back
+  const [undoState, setUndoState] = useState(null);
+  const [linkError, setLinkError] = useState(false);
+  const stateRef = useRef(state);
+  stateRef.current = state;
+  useEffect(() => {
+    // on opening the page, and when a link is pasted into this tab's address bar
+    const open = () => {
+      const code = covenantCode(location.hash);
+      if (code == null) return;
+      const shared = decodeCovenant(code);
+      if (shared) {
+        setUndoState(stateRef.current);
+        setState({ lines: shared.lines, goals: shared.goals.map((g) => ({ ...g, id: newId() })) });
+      } else setLinkError(true);
+      history.replaceState(null, "", location.pathname + location.search);
+    };
+    open();
+    addEventListener("hashchange", open);
+    return () => removeEventListener("hashchange", open);
+  }, []);
+  // Share: a short link with its own preview card where the site's server functions are there
+  // (Cloudflare), else the long "#c=" link
+  const { share, shareMsg, clearShare } = useShare(async () => {
+    const parts = covenantShare(state, result, T, full ? "cheapest" : "asTheyCome");
+    let image = null;
+    try { image = shareCard(parts, document.querySelector(".chart-container canvas")); } catch { /* text-only card */ }
+    const url = (await covenantShortLink(state, parts, image)) ?? covenantLink(state);
+    return { url, summary: parts.summary };
+  });
+
   return (
     <I18nContext.Provider value={T}>
-      <Background view="covenant" />
+      <Background view={full ? "full" : "simple"} />
       <main className="main">
-        <section className="content-box is-simple" aria-label={C.pageTitle}>
-          <div className="header-row">
-            <h1 className="main-title">{T.app.title}</h1>
-            <div className="row header-buttons">
-              <LanguagePicker lang={lang} onChange={(code) => { saveLang(code); setLang(code); }} />
+        <section className={`content-box ${full ? "is-full" : "is-simple"}`} aria-label={C.pageTitle}>
+          <SiteHeader calc="covenant" onGo={onGo} lang={lang} onLang={(code) => { saveLang(code); setLang(code); }}>
+            <div className="view-switch" role="group" aria-label={T.app.viewLabel}>
+              <button type="button" aria-pressed={!full} className={!full ? "is-on" : ""} onClick={() => setView("simple")}>{T.app.viewSimple}</button>
+              <button type="button" aria-pressed={full} className={full ? "is-on" : ""} onClick={() => setView("full")}>{T.app.viewFull}</button>
             </div>
-          </div>
-          <CalcNav calc="covenant" onGo={onGo} />
+            <button type="button" className="btn btn--primary header-share" onClick={share} title={C.shareTitle}>{T.app.share}</button>
+          </SiteHeader>
+          <Notices shareMsg={shareMsg} clearShare={clearShare}
+            canUndo={!!undoState} undoText={T.app.sharedLoaded}
+            onUndo={() => { setState(undoState); setUndoState(null); }} onDismissUndo={() => setUndoState(null)}
+            linkError={linkError} onDismissError={() => setLinkError(false)} />
           <div className="app-layout">
             <PieceCard state={state} setState={setState} />
             <div className="s-side">
-              <AnswerCard state={state} result={result} />
+              <AnswerCard state={state} result={result} full={full} onOtherView={() => setView(full ? "simple" : "full")} />
             </div>
           </div>
         </section>
@@ -117,11 +164,11 @@ function PieceCard({ state, setState }) {
   const addGoal = () => setState((s) => {
     const used = new Set(s.goals.map((g) => g.stat));
     const stat = SUBSTATS.find((x) => !used.has(x.key))?.key ?? "critRate";
-    return { ...s, goals: [...s.goals, { id: newId(), stat, level: 5 }] };
+    return { ...s, goals: [...s.goals, { id: newId(), stat, level: NEW_GOAL_LEVEL }] };
   });
   return (
     <section className="s-card s-plan cov-card" aria-label={C.planLabel}>
-      <h2 className="s-lead">{C.current}</h2>
+      <h2 className="s-lead">{C.current}<HelpButton label={C.howTitle} text={<HowItWorks />} /></h2>
       <div className="cov-lines">
         {state.lines.map((l, i) => (
           <div key={i} className="cov-row">
@@ -152,56 +199,156 @@ function PieceCard({ state, setState }) {
   );
 }
 
-// Right: the answer for the cheapest way, what to lock now, the materials, every way side by
-// side and the chance by reroll
-function AnswerCard({ state, result }) {
+// Right: the answer. Simple view: the simple rule's numbers and next step. Full view: the
+// cheapest way's, every way side by side, and the whole plan of the way you pick.
+function AnswerCard({ state, result, full, onOtherView }) {
   const T = useContextT();
   const C = T.covenant;
   const L = T.numberLocale;
+  const actions = (
+    <div className="s-actions">
+      <button type="button" className="btn btn--secondary" onClick={onOtherView}>{full ? T.app.toSimple : T.simple.details}</button>
+    </div>
+  );
   let body;
-  if (!result) body = <p className="s-hint">{C.noGoals}</p>;
-  else if (result.done) body = <p className="s-big cov-done">{C.done}</p>;
+  if (!result) body = <><p className="s-hint">{C.noGoals}</p>{actions}</>;
+  else if (result.done) body = <><p className="s-big cov-done">{C.done}</p>{actions}</>;
   else {
-    const best = result.ways.find((w) => w.key === "cheapest");
-    const lock = linesToLock(state.lines, state.goals, best.first).sort((a, b) => a - b);
+    const way = (k) => result.ways.find((w) => w.key === k);
+    const main = way(full ? "cheapest" : "asTheyCome");
+    const lock = linesToLock(state.lines, state.goals, main.first).sort((a, b) => a - b);
     const what = lock.map((i) => C.lineName(i + 1, C.stats[state.lines[i].stat], state.lines[i].level)).join(C.and);
-    // a way that comes out the same as the cheapest one isn't repeated: the cheapest says so
-    const same = (w) => Math.abs(w.rerolls - best.rerolls) <= 1e-9 * best.rerolls && Math.abs(w.materials.inQuills - best.materials.inQuills) <= 1e-9 * best.materials.inQuills;
-    const ways = result.ways.filter((w) => w === best || !same(w));
-    best.sameAs = result.ways.filter((w) => w !== best && same(w)).map((w) => w.key);
+    // full view: a way that comes out the same as one above it is folded into that row
+    const shown = [];
+    for (const w of ["cheapest", "asTheyCome", "fewest2", "fewest1", "none"].map(way)) {
+      const twin = shown.find((x) => sameWay(x, w));
+      if (twin) twin.sameAs.push(w.key); else shown.push({ ...w, sameAs: [] });
+    }
     body = (
       <>
-        <p className="s-big">{highlight(C.average, fmtInt(best.rerolls))}</p>
-        {best.p90 != null && <p className="s-second">{highlight(C.nine, fmtInt(best.p90))}</p>}
-        <p className="cov-next">
-          <span className="cov-next-icon" aria-hidden="true">🔒</span>
-          <span><strong>{C.next}</strong> {lock.length ? C.nextLock(what) : C.nextNoLock} <span className="muted">{C.nextAfter}</span></span>
-        </p>
-        <span className="s-eyebrow">{C.averages}</span>
-        <div className="cov-mats" aria-label={C.averages}>
+        <p className="s-big">{highlight(C.average, fmtInt(main.rerolls))}</p>
+        {main.p90 != null && <p className="s-second">{highlight(C.nine, fmtInt(main.p90))}</p>}
+        <p className="s-sure cov-next">{C.next} {lock.length ? C.nextLock(what) : C.nextNoLock}</p>
+        <p className="s-hint">{full ? C.nextAfter : `${C.ruleSimple} ${C.nextAfter}`}</p>
+        <dl className="s-stats cov-mats">
           {["roseScript", "seals", "quills"].map((k) => (
             <div key={k} className="s-stat cov-mat">
-              <dt>{C.materials[k]}</dt>
-              <dd><img src={icon(k === "roseScript" ? "rose-script" : k)} alt="" aria-hidden="true" />{k === "quills" ? fmtQuills(best.materials.quills, L) : fmtBig(best.materials[k], L)}</dd>
+              <dt>{C.matAverage[k]}</dt>
+              <dd><img src={icon(k === "roseScript" ? "rose-script" : k)} alt="" aria-hidden="true" />{k === "quills" ? fmtQuills(main.materials.quills, L) : fmtBig(main.materials[k], L)}</dd>
             </div>
           ))}
-        </div>
-        <p className="s-hint cov-inquills">{highlight(C.inQuills, fmtQuills(best.materials.inQuills, L))}</p>
-        <WaysTable ways={ways} />
-        <WaysChart ways={ways} best={best} />
+        </dl>
+        <p className="s-hint">{C.inQuills(fmtQuills(main.materials.inQuills, L))}</p>
+        {full && <WaysTable ways={shown} />}
+        {full && <PlanSection result={result} state={state} ways={shown} />}
+        <WaysChart ways={full ? shown : [main]} best={main} />
+        {actions}
       </>
     );
   }
   return <section className="s-card s-answer" aria-label={C.answerLabel}>{body}</section>;
 }
+const sameWay = (a, b) => Math.abs(a.rerolls - b.rerolls) <= 1e-9 * Math.max(1, a.rerolls) && Math.abs(a.materials.inQuills - b.materials.inQuills) <= 1e-9 * Math.max(1, a.materials.inQuills);
+
+// The odds behind it all, from the game's own numbers (rates.js)
+function HowItWorks() {
+  const T = useContextT();
+  const C = T.covenant, H = C.how;
+  const L = T.numberLocale;
+  const pct = (x) => `${(x * 100).toLocaleString(L, { maximumFractionDigits: 3 })}%`;
+  const subs = PIECES[0].substats, SW = subs.reduce((a, x) => a + x.weight, 0);
+  const LW = LEVELS.reduce((a, l) => a + l.weight, 0);
+  const atLeast = (lv) => LEVELS.filter((l) => l.level >= lv).reduce((a, l) => a + l.weight, 0) / LW;
+  const one = subs[0].weight / SW;
+  return (
+    <span className="goal-help">
+      <span className="goal-help-line">{H.lines}</span>
+      <span className="goal-help-line">{H.substats(pct(one))}</span>
+      <span className="goal-help-line">{H.levels}</span>
+      <ul>{LEVELS.map((l) => <li key={l.level}>{H.level(l.level, pct(l.weight / LW), pct(atLeast(l.level)))}</li>)}</ul>
+      <span className="goal-help-line">{H.example(pct(one * atLeast(NEW_GOAL_LEVEL)), pct(one * atLeast(8)))}</span>
+      <span className="goal-help-line">{H.value(valueText("critRate", 1, L), valueText("critRate", 8, L))}</span>
+      <span className="goal-help-line">{H.costs(fmtInt(COSTS.roseScript), COSTS.seals, COSTS.lockQuills[1], COSTS.lockQuills[2])}</span>
+    </span>
+  );
+}
+
+// The full plan of one way: every situation it can reach, what to lock there and how many
+// rerolls are left on average from there
+function PlanSection({ result, state, ways }) {
+  const T = useContextT();
+  const C = T.covenant;
+  const L = T.numberLocale;
+  const choices = ways.filter((w) => w.key === "cheapest" || w.key === "asTheyCome");
+  const [pick, setPick] = useState("cheapest");
+  const w = choices.find((x) => x.key === pick) ?? choices[0];
+  // a line by the hardest goal it meets ("Crit. Rate 8+")
+  const lineText = (m) => {
+    const gs = state.goals.filter((_, i) => (m >> i) & 1);
+    const g = gs.reduce((a, x) => (x.level > a.level ? x : a), gs[0]);
+    return C.shareGoal(C.stats[g.stat], g.level);
+  };
+  // a situation by the goals its lines meet together (each line one goal): extra lines that only
+  // repeat a goal change nothing, so such situations are one row
+  const metGoals = (masks) => {
+    let best = [];
+    const rec = (g, used, got) => {
+      if (g === state.goals.length) { if (got.length > best.length) best = got; return; }
+      rec(g + 1, used, got);
+      masks.forEach((m, i) => { if (!((used >> i) & 1) && ((m >> g) & 1)) rec(g + 1, used | (1 << i), [...got, g]); });
+    };
+    rec(0, 0, []);
+    return best;
+  };
+  const have = (masks) => { const gs = metGoals(masks); return gs.length ? gs.map((g) => lineText(1 << g)).join(" · ") : C.planNothing; };
+  const rows = [];
+  for (const step of w.plan) {
+    const met = metGoals(step.masks).length;
+    const key = `${have(step.masks)}|${step.kept.map(lineText).join("+")}`;
+    const row = rows.find((r) => r.key === key);
+    if (row) { row.lo = Math.min(row.lo, step.rerollsLeft); row.hi = Math.max(row.hi, step.rerollsLeft); row.start ||= step.start; }
+    else rows.push({ key, met, masks: step.masks, kept: step.kept, locks: step.locks, start: step.start, lo: step.rerollsLeft, hi: step.rerollsLeft });
+  }
+  rows.sort((a, b) => b.start - a.start || a.met - b.met || b.hi - a.hi);
+  const left = (r) => (Math.round(r.lo) === Math.round(r.hi) ? fmtBig(r.lo, L) : `${C.planRange(fmtBig(r.lo, L), fmtBig(r.hi, L))}`);
+  const quillsPer = (locks) => (COSTS.seals / 20 + COSTS.lockQuills[locks]).toLocaleString(L, { maximumFractionDigits: 2 });
+  const cols = [C.planHave, C.planDo, C.planLeft];
+  return (
+    <div className="cov-ways">
+      <div className="s-eyebrow-row">
+        <span className="s-eyebrow">{C.planTitle}</span>
+        <HelpButton label={C.planTitle} text={C.planHelp} />
+      </div>
+      {choices.length > 1 && (
+        <div className="seg" role="tablist" aria-label={C.planTitle}>
+          {choices.map((x) => (
+            <button key={x.key} type="button" role="tab" aria-selected={w.key === x.key} className={w.key === x.key ? "is-on" : ""} onClick={() => setPick(x.key)}>{C.ways[x.key]}</button>
+          ))}
+        </div>
+      )}
+      <div className="st-table cov-plan" role="table" aria-label={C.planTitle}>
+        <div className="st-row st-head" role="row">{cols.map((c, k) => <span key={c} role="columnheader" className={k === 2 ? "st-num" : ""}>{c}</span>)}</div>
+        {rows.map((r) => (
+          <div key={r.key} className="st-row" role="row">
+            <span role="cell" className="st-name"><span>{r.start ? C.planNow(have(r.masks)) : have(r.masks)}</span></span>
+            <span role="cell" className="cov-plan-do">
+              <span className="st-label">{cols[1]}</span>
+              {r.kept.length ? C.planLock(r.kept.map(lineText).join(C.and)) : C.planReroll}
+              <small>{C.planCost(quillsPer(r.locks))}</small>
+            </span>
+            <span role="cell" className="st-num"><span className="st-label">{cols[2]}</span>{left(r)}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 function wayName(w, C) {
-  if (w.key === "cheapest") {
-    const sub = w.byLocks[1] + w.byLocks[2] > 0 ? C.waysSub.cheapestLocks : C.waysSub.cheapestNoLocks;
-    return [C.ways.cheapest, w.sameAs?.length ? `${sub} · ${C.waysSub.sameAs(w.sameAs.map((k) => C.ways[k].toLowerCase()).join(", "))}` : sub];
-  }
-  if (w.key === "fewest2") return [C.ways.fewest2, C.waysSub.fewest2];
-  return [C.ways[w.key], null];
+  let sub = C.waysSub[w.key] ?? null;
+  if (w.key === "cheapest") sub = w.byLocks[1] + w.byLocks[2] > 0 ? C.waysSub.cheapestLocks : C.waysSub.cheapestNoLocks;
+  if (w.sameAs?.length) sub = [sub, C.waysSub.sameAs(w.sameAs.map((k) => C.ways[k].toLowerCase()).join(", "))].filter(Boolean).join(" · ");
+  return [C.ways[w.key], sub];
 }
 
 function WaysTable({ ways }) {
@@ -211,20 +358,16 @@ function WaysTable({ ways }) {
   const cols = [C.colRerolls, C.col90, C.materials.roseScript, C.materials.seals, C.materials.quills, C.colInQuills];
   return (
     <div className="cov-ways">
-      <div className="s-eyebrow-row">
-        <span className="s-eyebrow">{C.waysTitle}</span>
-        <HelpButton label={C.waysTitle} text={C.waysHelp} />
-      </div>
       <div className="st-table cov-table" role="table" aria-label={C.waysTitle} style={{ "--cols": cols.length }}>
         <div className="st-row st-head" role="row">
-          <span role="columnheader" />
+          <span role="columnheader" className="cov-ways-head">{C.waysTitle}<HelpButton label={C.waysTitle} text={C.waysHelp} /></span>
           {cols.map((c) => <span key={c} role="columnheader" className="st-num">{c}</span>)}
         </div>
         {ways.map((w, i) => {
           const [name, sub] = wayName(w, C);
           const values = [fmtBig(w.rerolls, L), w.p90 != null ? fmtBig(w.p90, L) : "-", fmtBig(w.materials.roseScript, L), fmtBig(w.materials.seals, L), fmtQuills(w.materials.quills, L), fmtQuills(w.materials.inQuills, L)];
           return (
-            <div key={w.key} className={`st-row ${w.key === "cheapest" ? "is-best" : ""}`} role="row">
+            <div key={w.key} className="st-row" role="row">
               <span className="st-name" role="cell">
                 <span className="swatch" style={{ "--c": `var(--s${(i % 6) + 1})` }} aria-hidden="true" />
                 <span className="cov-way"><span>{name}</span>{sub && <small>{sub}</small>}</span>
@@ -283,7 +426,7 @@ function WaysChart({ ways, best }) {
               y: yAxis(phone, data.Cs, (v) => `${Math.round(v * 100)}%`, { min: 0, max: 1 }),
             },
             plugins: {
-              legend: { display: true, position: "bottom", labels: { boxWidth: 14, boxHeight: 3, color: data.Cs.tick } },
+              legend: { display: data.datasets.length > 1, position: "bottom", labels: { boxWidth: 14, boxHeight: 3, color: data.Cs.tick } },
               tooltip: { callbacks: { title: (it) => C.reroll(fmtInt(it[0]?.parsed.x)), label: (c) => `${c.dataset.label}: ${(c.parsed.y * 100).toLocaleString(T.numberLocale, { maximumFractionDigits: 2 })}%` } },
             },
           }} />

@@ -2,6 +2,8 @@
 // text and card image); people are sent on to the calculator with the setup at once.
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const SITE = "Morimens Gacha Calculator";
+// where each calculator's links open, and its setup's place in the address
+const OPEN = { banners: (code) => `/banners/#s=${code}`, covenant: (code) => `/covenant/#c=${code}` };
 
 function page({ title, description, image, url, target, refresh }) {
   return `<!doctype html>
@@ -39,7 +41,7 @@ export async function onRequestGet({ params, env, request }) {
     // A new link can take up to a minute to reach every Cloudflare location: retry for a minute,
     // then go to the calculator's start page
     const tries = Number(url.searchParams.get("t") || 0);
-    if (tries >= 12) return Response.redirect(`${url.origin}/`, 302);
+    if (tries >= 12) return Response.redirect(`${url.origin}/banners/`, 302);
     return html(page({
       title: SITE, description: "Exact pull odds for gacha banners with pity, soft pity, guarantees and memory rules.",
       image: `${url.origin}/og-image.png`, url: url.href, refresh: `5; url=${url.pathname}?t=${tries + 1}`,
@@ -50,6 +52,6 @@ export async function onRequestGet({ params, env, request }) {
     description: record.detail ? `${record.detail} · ${SITE}` : SITE,
     image: record.image ? `${url.origin}/i/${id}.jpg` : `${url.origin}/og-image.png`,
     url: `${url.origin}/s/${id}`,
-    target: `${url.origin}/#s=${record.code}`,
+    target: url.origin + (OPEN[record.calc] ?? OPEN.banners)(record.code),
   }), 200, "public, max-age=3600");
 }

@@ -1,8 +1,9 @@
 # Morimens Gacha Calculator
 
 Exact pull statistics for gacha banners with pity, soft pity, guarantees, memory
-rules and item pools, and exact covenant substat rerolls (`covenant/`). Everything runs in
-the browser (no backend), so it can be hosted on GitHub Pages.
+rules and item pools (`banners/`), and exact covenant substat rerolls (`covenant/`). The
+site's root page sends you on to `banners/` (keeping old `#s=` share links working). Everything
+runs in the browser (no backend), so it can be hosted on GitHub Pages.
 
 ## Run locally
 
@@ -51,9 +52,9 @@ test fails) and on pull requests.
 | `src/share.js` | Shareable links (the setup packed after `#s=`) |
 | `src/export.js` | CSV and chart image downloads |
 | `src/components/` | UI: `PlanCard.jsx` and `AnswerCard.jsx` (the two cards, the same in both views), the banner plan tabs, goals and pity questions (simple view), plan rows and pity table (full view), chart, comparison, dialogs (Edit names, Banner rules, Settings) |
-| `src/Site.jsx`, `src/components/SiteParts.jsx` | The calculators: which one is open (from the address), the switch under the title, language, background, footer |
+| `src/Site.jsx`, `src/components/SiteParts.jsx` | The calculators: which one is open (from the address), the header with the ☰ menu (calculators and language), background, footer. To add a calculator: an entry in `CALCULATORS`, a folder with an `index.html` (copy `covenant/`), its name and description under `site` in each language file, and the page in `vite.config.js` |
 | `src/covenant/` | The covenant substat calculator: `rates.js` (the game's weights and costs), `engine.js` (exact rerolls and materials), `CovenantApp.jsx` (its page) |
-| `covenant/index.html` | The covenant calculator's own address (the same app, opened on that calculator) |
+| `index.html`, `banners/index.html`, `covenant/index.html` | The start page (sends you to `banners/`) and each calculator's own address (the same app, opened on that calculator) |
 | `src/styles.css` | All styling (colour tokens at the top) |
 | `src/i18n/en.js` | Every piece of interface text |
 | `src/site.config.js` | Background images (one per view), default preset, and the footer's site name, banner patch version and "Source code" link (`SOURCE_URL`) |
@@ -162,11 +163,20 @@ A reroll costs 7,500 Rose script and 3 seals, plus 1 quill with one locked line 
 with two (at most two). The calculator counts in quills, since a quill can be made into 20 seals
 but not the other way round: a reroll costs 0.15, 1.15 or 10.15 quills.
 
+The simple view gives the simple rule: lock a line
+the moment it meets a goal and keep it locked (up to 2 lines), which is the best or close to it
+for almost every goal. The full view adds every way of locking side by side (the cheapest one's
+numbers on top) and the whole plan: what to lock in every situation a way can lead to, and the
+rerolls left from there. The "?" by "Current substats" gives the odds, from `rates.js`.
+
 `src/covenant/engine.js` works it out exactly. A line matters only through which goals it can
 meet, so the state before a reroll is the 3 lines' goal masks (at most 120 states). Policy
 iteration finds the locking choices with the fewest quills on average ("Cheapest") and the
-fewest rerolls with up to 2, 1 or no locks; linear equations give the averages, and powers of
+fewest rerolls with up to 2, 1 or no locks ("lock as they come" is a fixed rule on the same chain); linear equations give the averages, and powers of
 the transition matrix give the chance by reroll, so even goals that take millions of rerolls
-are answered in milliseconds. `tests/covenant.test.js` checks it against answers worked out by
+are answered in milliseconds. Share links keep a covenant in `#c=…` (`src/covenant/share.js`:
+"1", then 2 digits per line and goal, substat and level); short links (`/s/…`) work for every
+calculator (`functions/api/share.js` keeps which one, `functions/s/[id].js` opens it).
+`tests/covenant.test.js` checks it against answers worked out by
 hand (a geometric wait, the three-Lv-8 Markov chain, and every one of the 64³ ways a reroll can
 come out).

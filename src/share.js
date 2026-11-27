@@ -222,13 +222,18 @@ export function shareSummary(state, result, T) {
 // the preview card's text and image; null where there are none (a local build, GitHub Pages, no
 // storage set up) or they don't answer in 5 seconds: then the long "#s=" link is used
 export async function makeShortLink(state, parts, image) {
+  return postShortLink({ calc: "banners", code: await encodeSetup(state), title: parts.title, detail: parts.detail, image });
+}
+// The same for any calculator: calc = its key (functions/s/[id].js sends the link there), code =
+// its setup as in its own long link
+export async function postShortLink({ calc, code, title, detail, image }) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 5000);
   try {
     const res = await fetch(new URL("api/share", window.location.origin + "/"), {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ code: await encodeSetup(state), title: parts.title, detail: parts.detail, image }),
+      body: JSON.stringify({ calc, code, title, detail, image }),
       signal: ctrl.signal,
     });
     if (!res.ok) return null;

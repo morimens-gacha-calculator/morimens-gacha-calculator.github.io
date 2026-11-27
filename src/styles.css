@@ -1036,7 +1036,7 @@ html[data-input="mouse"] .select:focus { border-color: var(--line-strong); outli
 }
 /* phones: language, view, settings and share on one row */
 @media (max-width: 640px) {
-  .header-buttons { display: grid; grid-template-columns: minmax(0, auto) minmax(0, 1fr) auto auto; gap: 6px; }
+  .header-buttons { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 6px; }
   .header-buttons .inline-field, .header-buttons .select { min-width: 0; width: 100%; }
   .header-buttons .select { padding: 0 22px 0 8px; max-width: 96px; }
   .view-switch { min-width: 0; }
@@ -1044,18 +1044,48 @@ html[data-input="mouse"] .select:focus { border-color: var(--line-strong); outli
   .header-buttons .btn { padding: 0 10px; }
 }
 
-/* ══ Calculators: the switch under the title ═════════════════════════════════════════════ */
-.calc-nav { align-self: flex-start; justify-self: start; width: max-content; margin-top: -6px; }
-.calc-nav a { height: 30px; padding: 0 14px; border-radius: 7px; display: inline-flex; align-items: center; text-decoration: none; color: var(--ink-2); font: 600 14px var(--font); white-space: nowrap; }
-.calc-nav a:hover:not(.is-on) { background: var(--action-soft); color: var(--ink); }
-.calc-nav a.is-on { background: var(--action); color: var(--action-ink); }
-@media (max-width: 640px) { .calc-nav { align-self: stretch; justify-self: stretch; width: auto; } .calc-nav a { flex: 1 1 0; justify-content: center; text-align: center; } }
+/* ══ The site's header and menu ═════════════════════════════════════════════════════════
+   ☰ + the site's name with the open calculator under it; the calculator's buttons on the right.
+   The menu is a panel from the left (on phones too) with the calculators and the language. */
+.site-brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.site-titles { display: grid; gap: 2px; min-width: 0; }
+.calc-name { margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--action); }
+.menu-btn { flex: none; width: 42px; height: 42px; display: inline-grid; place-items: center; border-radius: 9px; border: 1px solid var(--line); background: var(--inset); color: var(--ink); cursor: pointer; }
+.menu-btn:hover { background: var(--action-soft); border-color: var(--action-line); }
+.site-menu { margin: 0; padding: 0; width: min(340px, 88vw); height: 100dvh; max-height: 100dvh; max-width: none; border: 0; border-right: 1px solid var(--line-strong); background: var(--surface-2); color: var(--ink); }
+.site-menu::backdrop { background: rgba(5, 9, 13, 0.6); }
+.site-menu[open] { animation: menu-in 160ms ease-out; }
+@keyframes menu-in { from { transform: translateX(-100%); } to { transform: none; } }
+@media (prefers-reduced-motion: reduce) { .site-menu[open] { animation: none; } }
+.site-menu-inner { display: flex; flex-direction: column; height: 100%; box-sizing: border-box; padding: 14px 12px; gap: 10px; }
+.site-menu-head { display: flex; align-items: center; justify-content: space-between; padding: 0 4px 6px; border-bottom: 1px solid var(--line); }
+.site-menu-title { font-size: 11px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+.site-menu-head .notice-close { font-size: 24px; width: 36px; height: 36px; }
+.site-menu-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.site-menu-item { display: flex; align-items: flex-start; gap: 12px; padding: 10px 10px; border-radius: var(--r-md); text-decoration: none; color: var(--ink); border: 1px solid transparent; }
+.site-menu-item:hover, .site-menu-item:focus-visible { background: var(--action-soft); outline: none; }
+.site-menu-item.is-on { background: var(--action-soft); border-color: var(--action-line); }
+.site-menu-icon { flex: none; width: 36px; height: 36px; border-radius: 9px; display: grid; place-items: center; background: var(--inset); color: var(--action); }
+.site-menu-item.is-on .site-menu-icon { background: var(--action); color: var(--action-ink); }
+.site-menu-text { display: grid; gap: 2px; min-width: 0; }
+.site-menu-name { font-weight: 600; font-size: 15px; }
+.site-menu-desc { font-size: 13px; color: var(--ink-2); line-height: 1.35; }
+.site-menu-foot { margin-top: auto; padding: 10px 4px 2px; border-top: 1px solid var(--line); }
+.site-lang { display: grid; gap: 6px; }
+.site-lang .select { width: 100%; height: 40px; }
+@media (max-width: 640px) {
+  .menu-btn { width: 38px; height: 38px; }
+  .site-brand { gap: 10px; }
+  .calc-name { font-size: 12px; }
+  .site-brand .main-title { font-size: 21px; }
+  .site-menu-item { padding: 12px 10px; }
+}
 
 /* ══ Covenant substat calculator ═════════════════════════════════════════════════════════ */
 .cov-lines, .cov-goals { display: grid; gap: 8px; }
 .cov-row { display: grid; grid-template-columns: 22px minmax(0, 1fr) minmax(0, 132px); gap: 8px; align-items: center; }
 .cov-goal { grid-template-columns: minmax(0, 1fr) minmax(0, 132px) 32px; }
-.cov-goal-head { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 132px) 32px; gap: 8px; font-size: 12px; color: var(--muted); }
+.cov-goal-head { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 132px) 32px; gap: 8px; margin-bottom: -4px; font-size: 12.5px; font-weight: 500; color: var(--muted); } /* like the banner calculator's goal header */
 .cov-n { width: 22px; height: 22px; border-radius: 50%; display: inline-grid; place-items: center; font-size: 12px; font-weight: 700; background: var(--action-soft); }
 .cov-stat { position: relative; display: block; min-width: 0; }
 .cov-stat .select { width: 100%; padding-left: 38px; }
@@ -1063,19 +1093,16 @@ html[data-input="mouse"] .select:focus { border-color: var(--line-strong); outli
 .cov-level { width: 100%; font-variant-numeric: tabular-nums; }
 .cov-card .s-add { justify-self: center; }
 .cov-done { font-size: 22px; }
-.cov-next { display: flex; gap: 10px; align-items: flex-start; margin: 0; padding: 10px 12px; border-radius: var(--r-md); background: var(--action-soft); border: 1px solid var(--action-line); font-size: 14.5px; line-height: 1.45; }
-.cov-next-icon { flex: none; }
-.cov-mats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 0; }
+.s-stats.cov-mats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.st-label { font-weight: 400; }
+.cov-ways-head { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); }
 .cov-mat dd { display: flex; align-items: center; gap: 8px; }
 .cov-mat dd img { width: 28px; height: 28px; object-fit: contain; flex: none; }
-.cov-inquills { margin-top: -4px; }
 .cov-ways { display: grid; gap: 8px; }
 .cov-way { display: grid; gap: 1px; min-width: 0; }
 .cov-way small { font-size: 12px; color: var(--muted); font-weight: 400; }
 .st-name > span.cov-way { white-space: normal; overflow: visible; text-overflow: clip; }
 .cov-table .st-head .st-num { max-width: 90px; }
-.st-row.is-best > * { background: rgba(232, 176, 79, 0.1); }
-.st-row.is-best .cov-way > span { color: var(--gold); font-weight: 700; }
 @media (max-width: 640px) {
   /* a line stays on one row: substat, level */
   .cov-row { grid-template-columns: 20px minmax(0, 1fr) 118px; gap: 6px; }
@@ -1085,10 +1112,21 @@ html[data-input="mouse"] .select:focus { border-color: var(--line-strong); outli
   .cov-stat .select { padding-left: 32px; }
   .cov-icon { left: 8px; }
   .cov-level { padding-left: 8px; }
-  .cov-mats { gap: 6px; }
+  .s-stats.cov-mats { gap: 6px; }
+  .header-buttons:has(> :only-child) { display: flex; justify-content: flex-end; }
   .cov-mat { padding: 8px; }
   .cov-mat dd { font-size: 17px; gap: 5px; flex-wrap: wrap; }
   .cov-mat dd img { width: 22px; height: 22px; }
-  .st-row.is-best { background: rgba(232, 176, 79, 0.1); }
-  .st-row.is-best > * { background: none; }
+}
+/* the whole plan (full view): what your lines meet · what to do · rerolls left */
+.st-table.cov-plan { grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr) auto; }
+.cov-plan-do { display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 1px; }
+.cov-plan-do small { font-size: 12px; color: var(--muted); }
+.cov-plan .st-name > span:last-child { white-space: normal; overflow: visible; }
+.cov-ways > .seg { justify-self: start; }
+@media (max-width: 640px) {
+  .st-table.cov-plan { grid-template-columns: minmax(0, 1fr); }
+  .cov-plan-do { flex-basis: 100%; flex-direction: row; flex-wrap: wrap; align-items: baseline; justify-content: flex-start; gap: 0 6px; }
+  .cov-mat dd { flex-wrap: nowrap; font-size: 16px; }
+  .cov-mat dd img { width: 20px; height: 20px; }
 }

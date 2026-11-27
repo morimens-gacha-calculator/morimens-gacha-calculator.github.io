@@ -6,7 +6,7 @@ import { shareCard } from "./export.js";
 import { useCompare } from "./useCompare.js";
 import { I18nContext, withWording } from "./i18n/index.js";
 import { DEFAULT_PRESET } from "./site.config.js";
-import { Background, CalcNav, LanguagePicker, SiteFooter, loadLang, saveLang } from "./components/SiteParts.jsx";
+import { Background, SiteFooter, SiteHeader, loadLang, saveLang } from "./components/SiteParts.jsx";
 import { Notices, useShare } from "./components/Share.jsx";
 import NamesDialog from "./components/NamesDialog.jsx";
 import Dialog from "./components/Dialog.jsx";
@@ -237,10 +237,7 @@ export default function App({ onGo }) {
         <Background view={simpleView ? "simple" : "full"} />
         <main className="main">
           <section className={`content-box ${simpleView ? "is-simple" : "is-full"}`} aria-label={T.app.title}>
-            <div className="header-row">
-              <h1 className="main-title">{T.app.title}</h1>
-              <div className="row header-buttons">
-                <LanguagePicker lang={lang} onChange={changeLang} />
+            <SiteHeader calc="banners" onGo={onGo} lang={lang} onLang={changeLang}>
                 <div className="view-switch" role="group" aria-label={T.app.viewLabel}>
                   <button type="button" aria-pressed={simpleView} className={simpleView ? "is-on" : ""} onClick={() => setViewMode("simple")}>{T.app.viewSimple}</button>
                   <button type="button" aria-pressed={!simpleView} className={!simpleView ? "is-on" : ""} onClick={() => setViewMode("full")}>{T.app.viewFull}</button>
@@ -249,9 +246,7 @@ export default function App({ onGo }) {
                   <span aria-hidden="true">⚙</span><span className="header-settings-text">{T.setup.tabSettings}</span>
                 </button>
                 <button type="button" className="btn btn--primary header-share" onClick={share} title={T.app.shareTitle}>{T.app.share}</button>
-              </div>
-            </div>
-            <CalcNav calc="pulls" onGo={onGo} />
+            </SiteHeader>
 
             <Notices shareMsg={shareMsg} clearShare={clearShare}
               canUndo={!!undoState} undoText={undoKind === "shared" ? T.app.sharedLoaded : views.length > 1 ? T.stages.resetDone(undoPlan) : T.app.resetDone}
