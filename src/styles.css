@@ -1188,3 +1188,62 @@ html[data-input="mouse"] .select:focus { border-color: var(--line-strong); outli
   .inc-col img { display: none; }
   .inc-ratio { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* ══ Anniversary reruns (a page for this event only: remove with src/reruns/) ══════════════════
+   Bank, pity, income and rewards on the left; the answer and a chart of pulls held by day on
+   the right; under them the 35 rerun days, a week to a row from Monday 30 Nov. */
+.rr-label { display: inline-flex; align-items: center; gap: 6px; }
+.rr-bank-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.rr-pity { display: grid; grid-template-columns: auto minmax(0, 1fr) minmax(0, 1fr); gap: 6px 10px; align-items: center; }
+.rr-pity-row { display: contents; }
+.rr-pity-head { font-size: 12px; color: var(--muted); line-height: 1.25; }
+.rr-pity-name { font-size: 13.5px; color: var(--ink-2); }
+.rr-small { width: 100%; height: 32px; }
+select.rr-small { padding: 0 22px 0 10px; }
+.rr-income { margin: 0; font-size: 14px; color: var(--ink-2); line-height: 1.45; }
+.rr-income .s-hl { font-size: 15px; }
+.rr-link { color: var(--action-text); white-space: nowrap; }
+.rr-gifts { display: grid; gap: 6px; }
+.rr-gift { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: var(--r-md); background: var(--surface-3); font-size: 14px; cursor: pointer; }
+.rr-gift input { accent-color: var(--action); width: 17px; height: 17px; margin: 0; flex: none; }
+.rr-gift-value { margin-left: auto; color: var(--muted); font-size: 13px; text-align: right; }
+.rr-gift.is-past { opacity: 0.5; cursor: default; }
+.rr-chart { height: 280px; }
+.rr-over { padding: 24px 0; text-align: center; font-size: 15px; }
+
+.rr-cal-card { margin-top: var(--col-gap); }
+.rr-cal-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; }
+.rr-clear { margin-left: auto; }
+.rr-cal { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; margin-top: 12px; }
+.rr-wd { text-align: center; font-size: 12px; color: var(--muted); }
+.rr-tile { background: var(--surface-3); border: 1px solid transparent; border-radius: var(--r-md); overflow: hidden; display: flex; flex-direction: column; }
+.rr-tile.is-planned { border-color: var(--gold); }
+.rr-tile.is-past .rr-body, .rr-tile.is-past .rr-date { opacity: 0.55; }
+.rr-tile.is-past img { filter: grayscale(1) brightness(0.6); }
+.rr-por { position: relative; aspect-ratio: 4 / 3; background: var(--inset); }
+.rr-por img { width: 100%; height: 100%; object-fit: cover; object-position: 50% 35%; display: block; }
+.rr-date { position: absolute; left: 6px; top: 6px; background: rgba(18, 24, 30, 0.85); padding: 1px 7px; border-radius: 6px; font-size: 12px; white-space: nowrap; }
+.rr-ended { position: absolute; right: 6px; bottom: 6px; background: rgba(18, 24, 30, 0.85); padding: 1px 7px; border-radius: 6px; font-size: 12px; color: var(--muted); }
+.rr-body { padding: 8px; display: grid; gap: 6px; }
+.rr-name { font-size: 14.5px; font-weight: 600; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rr-lv { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 3px 5px; align-items: center; }
+.rr-lv-row { display: contents; }
+.rr-lv-head { font-size: 11.5px; color: var(--muted); padding-left: 2px; }
+.rr-lv-kind { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: 6px; color: var(--muted); font-size: 12px; margin-top: 3px; min-height: 18px; }
+.rr-sel { width: 100%; height: 28px; padding: 0 16px 0 6px; font-size: 12.5px; background-position: right 4px center; }
+.rr-sel.is-set { border-color: color-mix(in srgb, var(--gold) 70%, transparent); }
+.rr-odds { display: flex; align-items: center; gap: 6px; font-size: 12.5px; }
+.rr-plus { color: var(--gold); font-weight: 600; }
+.rr-pill { padding: 0 7px; border-radius: 999px; background: var(--inset); font-weight: 600; font-variant-numeric: tabular-nums; }
+.rr-pill.is-good { color: var(--ok); }
+.rr-pill.is-mid { color: var(--warn); }
+.rr-pill.is-bad { color: var(--err); }
+@media (max-width: 900px) {
+  .rr-cal { grid-template-columns: repeat(auto-fill, minmax(156px, 1fr)); }
+  .rr-wd { display: none; }
+}
+@media (max-width: 640px) {
+  .rr-cal { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .rr-chart { height: 240px; }
+  .rr-por { aspect-ratio: 16 / 10; }
+}

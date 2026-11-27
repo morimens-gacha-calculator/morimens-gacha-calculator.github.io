@@ -3,7 +3,7 @@
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const SITE = "Morimens Gacha Calculator";
 // where each calculator's links open, and its setup's place in the address
-const OPEN = { banners: (code) => `/banners/#s=${code}`, covenant: (code) => `/covenant/#c=${code}`, income: (code) => `/income/#i=${code}` };
+const OPEN = { banners: (code) => `/banners/#s=${code}`, covenant: (code) => `/covenant/#c=${code}`, income: (code) => `/income/#i=${code}`, reruns: (code) => `/reruns/#r=${code}` };
 
 function page({ title, description, image, url, target, refresh }) {
   return `<!doctype html>

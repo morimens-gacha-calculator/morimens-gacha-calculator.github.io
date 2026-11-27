@@ -1,6 +1,7 @@
 // POST /api/share: keep a setup under a short code, for links like /s/k7Fq2aB.
 // Body: { calc?, code, title, detail, image? }. calc = the calculator ("banners", the default,
-// "covenant" or "income"); code = the setup as in its long links ("#s=…", "#c=…", "#i=…"); title, detail = the preview
+// "covenant", "income" or "reruns"); code = the setup as in its long links ("#s=…", "#c=…",
+// "#i=…", "#r=…"); title, detail = the preview
 // card's text; image = the card as a JPEG data URL (made in the browser).
 // Storage: the KV namespace bound as LINKS (s:<id> = the record, i:<id> = the card image).
 // The same setup always gets the same code, so sharing it again writes nothing.
@@ -9,7 +10,7 @@ const MAX_TEXT = 300;       // characters per text field
 const MAX_IMAGE = 400_000;  // bytes; a 1200×630 JPEG card is ~60–120 KB
 const B62 = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 // what each calculator's setup codes look like (functions/s/[id].js has where each one opens)
-const CODES = { banners: /^[zj][A-Za-z0-9_-]+$/, covenant: /^1(?:[0-7][1-8]){3,6}$/, income: /^1[A-Za-z0-9_-]{2,6000}$/ };
+const CODES = { banners: /^[zj][A-Za-z0-9_-]+$/, covenant: /^1(?:[0-7][1-8]){3,6}$/, income: /^1[A-Za-z0-9_-]{2,6000}$/, reruns: /^1(?:-\d{1,8}){7}-[0-9a-g]{138}$/ };
 
 const json = (obj, status = 200) => new Response(JSON.stringify(obj), {
   status, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" },

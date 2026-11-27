@@ -54,9 +54,10 @@ test fails) and on pull requests.
 | `src/export.js` | CSV and chart image downloads |
 | `src/components/` | UI: `PlanCard.jsx` and `AnswerCard.jsx` (the two cards, the same in both views), the banner plan tabs, goals and pity questions (simple view), plan rows and pity table (full view), chart, comparison, dialogs (Edit names, Banner rules, Settings) |
 | `src/Site.jsx`, `src/components/SiteParts.jsx` | The calculators: which one is open (from the address), the header with the ☰ menu (calculators and language), background, footer. To add a calculator: an entry in `CALCULATORS`, a folder with an `index.html` (copy `covenant/`), its name and description under `site` in each language file, and the page in `vite.config.js` |
+| `src/reruns/` | Anniversary reruns, a page for this event only (remove the folder, `reruns/`, its `CALCULATORS` entry, `vite.config.js` input, `reruns` texts, styles and `functions/` codes when it ends): `plan.js` (the 35 days, bank by day, links), `engine.js` (exact odds), `RerunsApp.jsx` |
 | `src/income/` | Pull income: `income.js` (the sources, totals, saving and links; other pages can read the saved income with `loadIncome()` and `incomeTotals()`), `IncomeApp.jsx` (its page) |
 | `src/covenant/` | The covenant substat calculator: `rates.js` (the game's weights and costs), `engine.js` (exact rerolls and materials), `CovenantApp.jsx` (its page) |
-| `index.html`, `banners/index.html`, `covenant/index.html`, `income/index.html` | The start page (sends you to `banners/`) and each calculator's own address (the same app, opened on that calculator) |
+| `index.html`, `banners/index.html`, `covenant/index.html`, `income/index.html`, `reruns/index.html` | The start page (sends you to `banners/`) and each calculator's own address (the same app, opened on that calculator) |
 | `src/styles.css` | All styling (colour tokens at the top) |
 | `src/i18n/en.js` | Every piece of interface text |
 | `src/site.config.js` | Background images (one per view), default preset, and the footer's site name, banner patch version and "Source code" link (`SOURCE_URL`) |
@@ -198,3 +199,23 @@ at first). Everything is saved in the browser under `income-v1` for the pages th
 pulls with it: `loadIncome()` and `incomeTotals()` in `src/income/income.js`. Share links keep
 the changes from the defaults in `#i=…` ("1", then base64url JSON). `tests/income.test.js` checks
 the numbers against the spreadsheet they come from.
+
+## Anniversary reruns
+
+`reruns/` plans pulls on the 35 anniversary rerun days (30 Nov 2026 to 3 Jan 2027), a page for
+this event only. Every day has the character's limited banner and their wheel's limited banner,
+with the usual limited odds (the `limitedChar` and `limitedWheel` presets). You give your pulls and
+silver now, your pity, and for each day a level now and a goal for the character and the wheel
+(None, E0 = 1 copy, E3 = 4, OE = 8, AA = 16). What you hold each day is your bank plus your saved
+Pull income after today (a source that comes every N days comes on 30 Nov and every N days around
+it) and the event's rewards on 30 Nov (Sleepless Oath, Premium Archives, Echoed Pilgrimage Arc 2
+chapter 7).
+
+`src/reruns/engine.js` works it out exactly: on each banner you pull until the goal is met or the
+pulls held that day run out, characters first, then wheels. Character banners share pity and the
+guarantee, and wheel banners likewise, so the state carried from banner to banner is the pulls spent,
+both pity states and whether everything so far went to plan. A met goal leaves its pity at the
+start; running out leaves it where it was. The answer: the chance of the whole plan and of each
+banner, the pulls spent on average, and the pulls left each day (middle outcome and 8 in 10). It
+runs in a worker (`plan.worker.js`). Links keep a plan in `#r=…`. `tests/reruns.test.js` checks it
+against the banner engine and a slow pull-by-pull chain.
