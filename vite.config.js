@@ -9,5 +9,5 @@ export default defineConfig({
   worker: { format: "es" },
   // one page per calculator (the same app; each address opens its own calculator), and the
   // start page, which sends you to banners/
-  build: { rollupOptions: { input: Object.fromEntries(["index.html", "banners/index.html", "covenant/index.html", "income/index.html", "reruns/index.html"].map((f) => [f.replace(/\/?index\.html$/, "") || "start", resolve(import.meta.dirname, f)])) } },
+  build: { rollupOptions: { input: Object.fromEntries(["index.html", "banners/index.html", "covenant/index.html", "income/index.html"].map((f) => [f.replace(/\/?index\.html$/, "") || "start", resolve(import.meta.dirname, f)])) } },
 });

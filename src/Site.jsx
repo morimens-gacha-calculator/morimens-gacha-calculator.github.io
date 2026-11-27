@@ -2,11 +2,10 @@ import { lazy, Suspense, useEffect, useState } from "react";
 import App from "./App.jsx";
 import { hrefOf, whereAmI } from "./components/SiteParts.jsx";
 
-// The calculators: which one is open follows the address (banners/, covenant/, income/, reruns/; the root page
+// The calculators: which one is open follows the address (banners/, covenant/, income/; the root page
 // sends you to banners/). Switching keeps the page and changes the address; Back works.
 const CovenantApp = lazy(() => import("./covenant/CovenantApp.jsx"));
 const IncomeApp = lazy(() => import("./income/IncomeApp.jsx"));
-const RerunsApp = lazy(() => import("./reruns/RerunsApp.jsx"));
 
 export default function Site() {
   const [calc, setCalc] = useState(() => whereAmI().calc);
@@ -21,7 +20,6 @@ export default function Site() {
     setCalc(key);
     scrollTo(0, 0);
   };
-  if (calc === "reruns") return <Suspense fallback={null}><RerunsApp onGo={go} /></Suspense>;
   if (calc === "income") return <Suspense fallback={null}><IncomeApp onGo={go} /></Suspense>;
   if (calc === "covenant") return <Suspense fallback={null}><CovenantApp onGo={go} /></Suspense>;
   return <App onGo={go} />;
