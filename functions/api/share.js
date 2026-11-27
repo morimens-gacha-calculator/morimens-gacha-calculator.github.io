@@ -38,13 +38,18 @@ export async function onRequestPost({ request, env }) {
   if (typeof code !== "string" || code.length > MAX_CODE || !CODES[calc].test(code)) return json({ error: "bad setup" }, 400);
   const text = (v) => (typeof v === "string" ? v.slice(0, MAX_TEXT) : "");
 
-  // a short code from the setup's hash; longer only if it clashes with a different setup
+  // a short code from the setup's hash; longer only if it clashes with a different setup.
+  // A reruns plan's numbers also depend on the sharer's income and the date, which its code
+  // doesn't hold: there the card's text is part of the hash too, so new numbers get a new link
+  // (and card) instead of the first one ever made for that plan.
+  const seed = calc === "banners" ? code : calc === "reruns" ? `${calc}:${code}:${text(title)}:${text(detail)}` : `${calc}:${code}`;
+  const same = (r) => r.code === code && (r.calc ?? "banners") === calc && (calc !== "reruns" || (r.title === text(title) && r.detail === text(detail)));
   let id = null;
   for (let len = 7; len <= 12 && !id; len++) {
-    const candidate = await idFor(calc === "banners" ? code : `${calc}:${code}`, len);
+    const candidate = await idFor(seed, len);
     const existing = await env.LINKS.get(`s:${candidate}`, "json");
     if (!existing) id = candidate;
-    else if (existing.code === code && (existing.calc ?? "banners") === calc) return json({ id: candidate });
+    else if (same(existing)) return json({ id: candidate });
   }
   if (!id) return json({ error: "no free code" }, 500);
 

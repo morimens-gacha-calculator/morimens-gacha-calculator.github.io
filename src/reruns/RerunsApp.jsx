@@ -6,8 +6,8 @@ import { HelpButton } from "../components/Help.jsx";
 import NumberInput from "../components/NumberInput.jsx";
 import { phoneLayout, themeColors, usePhone, yAxis } from "../components/ResultChart.jsx";
 import { Notices, useShare } from "../components/Share.jsx";
-import { download, fileName, shareCard } from "../export.js";
-import { fmtDate, planImage, planLines, planText } from "./export.js";
+import { download, fileName } from "../export.js";
+import { fmtDate, planImage, planLines, planText, shareCardImage } from "./export.js";
 import { postShortLink } from "../share.js";
 import { incomeTotals, loadIncome } from "../income/income.js";
 import { solvePlan } from "./engine.js";
@@ -109,8 +109,9 @@ export default function RerunsApp({ onGo }) {
 
   const { share, shareMsg, clearShare } = useShare(async () => {
     const parts = rerunsShare(plan, query, result, income, today, T);
+    // the card is drawn from the plan, so it doesn't depend on which view is open
     let image = null;
-    try { image = shareCard(parts, document.querySelector(".rr-answer .chart-container canvas")); } catch { /* text-only card */ }
+    try { image = await shareCardImage(parts, { plan, today, T, portrait }); } catch { /* no card image then */ }
     const code = encodePlan(plan);
     const { origin, pathname, search } = window.location;
     const url = (await postShortLink({ calc: "reruns", code, title: parts.title, detail: parts.detail, image })) ?? `${origin}${pathname}${search}#r=${code}`;
